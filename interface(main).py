@@ -1,9 +1,10 @@
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-from codigo import BancoDeDados  
+from backend_gerenciador import BancoDeDados
+import threading
 
-# 1. Conecta com o banco de dados 
+
 sistema = BancoDeDados()
 
 
@@ -30,9 +31,9 @@ def abrir_janela_monitor():
     abas.add(aba_atualizar, text="Atualizar")
     abas.add(aba_deletar, text="Deletar")
 
-    # ==========================================
+    
     # LÓGICA COMPARTILHADA (ATUALIZAR LISTAS)
-    # ==========================================
+    
     def atualizar_listas():
         # USO DA NOVA API (Sem SQL direto)
         monitores_db = sistema.listar_monitores()
@@ -294,11 +295,11 @@ def abrir_janela_checklist():
     from tkinter import ttk, messagebox
 
     janela_checklist = tk.Toplevel(janela_principal)
-    janela_checklist.title("Checklist Diário")
-    janela_checklist.geometry("1000x650")
+    janela_checklist.title("Check-list Diário")
+    janela_checklist.geometry("1000x990")
     janela_checklist.transient(janela_principal)
 
-    tk.Label(janela_checklist, text="📝 Checklist de Materiais", font=("Arial", 16, "bold")).pack(pady=15)
+    tk.Label(janela_checklist, text="📝 Check-list de Materiais", font=("Arial", 16, "bold")).pack(pady=15)
 
     
     # SISTEMA DE ROLAGEM (CANVAS + SCROLLBAR)
@@ -458,7 +459,7 @@ def abrir_janela_checklist():
         try:
             with open(nome_arquivo, "w", encoding="utf-8") as arquivo:
                 arquivo.write("=" * 105 + "\n")
-                arquivo.write("                                RELATÓRIO DE CHECKLIST DIÁRIO\n")
+                arquivo.write("                                RELATÓRIO DE CHECK-LIST DIÁRIO\n")
                 arquivo.write("=" * 105 + "\n")
                 arquivo.write(f"Data e Hora da Conferência: {agora_str}\n\n")
 
@@ -482,56 +483,54 @@ def abrir_janela_checklist():
             messagebox.showerror("Erro", f"Erro ao gerar o arquivo txt: {e}", parent=janela_checklist)
             return
 
-        
-        # ENVIO AUTOMÁTICO PARA O WHATSAPP
-        
-        try:
-            import pywhatkit
+        msg_whatsapp = f"📋 *RELATÓRIO DE CHECK-LIST DIÁRIO*\nData: {agora_str}\n\n"
+        tem_pendencia = False
 
-            msg_whatsapp = f"📋 *RELATÓRIO DE CHECKLIST DIÁRIO*\nData: {agora_str}\n\n"
-            tem_pendencia = False
+        for id_mat, dados in entradas_checklist.items():
+            nome, qtd_esperada, entry, combo_obs, entry_quarto = dados
+            qtd_encontrada = entry.get()
+            obs = combo_obs.get()
+            quarto = entry_quarto.get().strip()
 
-            for id_mat, dados in entradas_checklist.items():
-                nome, qtd_esperada, entry, combo_obs, entry_quarto = dados
-                qtd_encontrada = entry.get()
-                obs = combo_obs.get()
-                quarto = entry_quarto.get().strip()
+            if str(qtd_esperada) != qtd_encontrada or obs != "" or quarto != "":
+                tem_pendencia = True
+                msg_whatsapp += f"🔸 *{nome}*\n"
+                msg_whatsapp += f"Esperado: {qtd_esperada} | Encontrado: {qtd_encontrada}\n"
+                if obs: msg_whatsapp += f"Status: {obs}\n"
+                if quarto: msg_whatsapp += f"Quarto: {quarto}\n\n"
 
-                if str(qtd_esperada) != qtd_encontrada or obs != "" or quarto != "":
-                    tem_pendencia = True
-                    msg_whatsapp += f"🔸 *{nome}*\n"
-                    msg_whatsapp += f"Esperado: {qtd_esperada} | Encontrado: {qtd_encontrada}\n"
-                    if obs: msg_whatsapp += f"Status: {obs}\n"
-                    if quarto: msg_whatsapp += f"Quarto: {quarto}\n\n"
+        if not tem_pendencia:
+            msg_whatsapp += "✅ _Estoque perfeito! Nenhuma divergência ou anotação._\n"
 
-            if not tem_pendencia:
-                msg_whatsapp += "✅ _Estoque perfeito! Nenhuma divergência ou anotação._\n"
+        id_do_grupo = "BZHqtiMDxQsJCGdqysnRI2"
 
-            id_do_grupo = "BZHqtiMDxQsJCGdqysnRI2"
+        # 2. Definir a função da Thread (o trabalho pesado que roda em segundo plano)
+        def tarefa_whatsapp(mensagem, id_grupo):
+            try:
+                import pywhatkit
+                pywhatkit.sendwhatmsg_to_group_instantly(id_grupo, mensagem, wait_time=15, tab_close=True)
+            except Exception as e:
+                print(f"Erro no envio via WhatsApp em background: {e}")
 
-            messagebox.showinfo("WhatsApp",
-                                "O relatório foi salvo! Aguarde alguns segundos, o navegador será aberto para enviar a mensagem no WhatsApp.",
-                                parent=janela_checklist)
-
-            pywhatkit.sendwhatmsg_to_group_instantly(id_do_grupo, msg_whatsapp, wait_time=15, tab_close=True)
-
-        except ImportError:
-            messagebox.showwarning("Aviso",
-                                   "A biblioteca 'pywhatkit' não está instalada. O relatório em TXT foi salvo, mas não enviado pelo WhatsApp.\n\nInstale usando: pip install pywhatkit",
-                                   parent=janela_checklist)
-        except Exception as e:
-            messagebox.showerror("Erro no WhatsApp", f"O TXT foi salvo, mas o envio para o WhatsApp falhou:\n{e}",
-                                 parent=janela_checklist)
-
+        # 3. Exibir os avisos na interface ANTES de iniciar o processo do WhatsApp
         if alertas:
-            mensagem_final = f"Checklist processado e relatório '{nome_arquivo}' gerado!\n\nAtenção aos Alertas:\n\n" + "\n".join(
+            mensagem_final = f"Check-list processado e relatório '{nome_arquivo}' gerado!\n\nAtenção aos Alertas:\n\n" + "\n".join(
                 alertas)
             messagebox.showwarning("Atenção aos Alertas", mensagem_final, parent=janela_checklist)
         else:
             messagebox.showinfo("Sucesso",
-                                f"Checklist perfeito! Nenhum item faltando.\nRelatório '{nome_arquivo}' salvo.",
+                                f"Check-list perfeito! Nenhum item faltando.\nRelatório '{nome_arquivo}' salvo.",
                                 parent=janela_checklist)
 
+        messagebox.showinfo("WhatsApp",
+                            "O relatório foi salvo! Aguarde alguns segundos, o navegador será aberto automaticamente em segundo plano para o envio.",
+                            parent=janela_checklist)
+
+        # 4. Iniciar a Thread do WhatsApp
+        thread_wpp = threading.Thread(target=tarefa_whatsapp, args=(msg_whatsapp, id_do_grupo))
+        thread_wpp.start()
+
+        # 5. Fechar a janela do checklist instantaneamente
         janela_checklist.unbind_all("<MouseWheel>")
         janela_checklist.unbind_all("<Button-4>")
         janela_checklist.unbind_all("<Button-5>")
@@ -545,7 +544,7 @@ def abrir_janela_checklist():
 
     janela_checklist.protocol("WM_DELETE_WINDOW", ao_fechar)
 
-    tk.Button(janela_checklist, text="Salvar e Registrar Checklist", command=salvar_checklist, bg="#ff9900",
+    tk.Button(janela_checklist, text="Salvar e Registrar Check-list", command=salvar_checklist, bg="#ff9900",
               font=("Arial", 11, "bold")).pack(pady=20)
 
 
@@ -617,6 +616,140 @@ def abrir_janela_relatorio():
 
     tk.Button(janela_rel, text="Gerar Relatório", command=confirmar_e_gerar, bg="blue", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
 
+def abrir_janela_movimentacoes():
+        from datetime import datetime
+
+        janela_mov = tk.Toplevel(janela_principal)
+        janela_mov.title("Movimentações de Stock")
+        janela_mov.geometry("450x420")
+        janela_mov.transient(janela_principal)
+
+        # Criação das abas
+        abas = ttk.Notebook(janela_mov)
+        abas.pack(fill="both", expand=True, padx=10, pady=10)
+
+        aba_entrada = tk.Frame(abas)
+        aba_dano = tk.Frame(abas)
+
+        abas.add(aba_entrada, text="Registar Entrada")
+        abas.add(aba_dano, text="Registar Dano/Perda")
+
+        # Função partilhada para carregar e atualizar os materiais disponíveis
+        def atualizar_combos_mov():
+            materiais_db = sistema.listar_materiais()
+            # Mostra o ID, Nome e a quantidade atual em stock
+            lista_formatada = [f"{m[0]} - {m[1]} (Atual: {m[2]})" for m in materiais_db]
+
+            combo_mat_ent['values'] = lista_formatada
+            combo_mat_dano['values'] = lista_formatada
+
+            if lista_formatada:
+                combo_mat_ent.current(0)
+                combo_mat_dano.current(0)
+            else:
+                combo_mat_ent.set('')
+                combo_mat_dano.set('')
+
+        # --- LÓGICA DA ABA 1: REGISTAR ENTRADA ---
+        def confirmar_entrada():
+            selecionado = combo_mat_ent.get()
+            qtd_texto = entry_qtd_ent.get()
+            data_texto = entry_data_ent.get()
+
+            if not selecionado or qtd_texto == "" or data_texto == "":
+                messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=janela_mov)
+                return
+
+            try:
+                quantidade = int(qtd_texto)
+                if quantidade <= 0:
+                    messagebox.showerror("Erro", "A quantidade deve ser maior que zero!", parent=janela_mov)
+                    return
+            except ValueError:
+                messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=janela_mov)
+                return
+
+            id_mat = int(selecionado.split(" - ")[0])
+            try:
+                # Chama a função do seu backend
+                sistema.criar_entrada(data_texto, quantidade, id_mat)
+                messagebox.showinfo("Sucesso", "Entrada de stock registada! O saldo foi atualizado.", parent=janela_mov)
+                entry_qtd_ent.delete(0, tk.END)
+                atualizar_combos_mov()  # Atualiza os números na interface
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao registar entrada: {e}", parent=janela_mov)
+
+        # Layout Aba 1
+        tk.Label(aba_entrada, text="Registar Entrada de Material", font=("Arial", 14, "bold"), fg="green").pack(pady=15)
+        tk.Label(aba_entrada, text="Selecione o Material:").pack()
+        combo_mat_ent = ttk.Combobox(aba_entrada, state="readonly", width=35)
+        combo_mat_ent.pack(pady=5)
+
+        tk.Label(aba_entrada, text="Quantidade a Adicionar:").pack()
+        entry_qtd_ent = tk.Entry(aba_entrada, width=15)
+        entry_qtd_ent.pack(pady=5)
+
+        tk.Label(aba_entrada, text="Data (ANO-MÊS-DIA):").pack()
+        entry_data_ent = tk.Entry(aba_entrada, width=15)
+        entry_data_ent.insert(0, datetime.now().strftime("%Y-%m-%d"))  # Insere a data de hoje por defeito
+        entry_data_ent.pack(pady=5)
+
+        tk.Button(aba_entrada, text="📥 Confirmar Entrada", command=confirmar_entrada, bg="green", fg="white",
+                  font=("Arial", 10, "bold")).pack(pady=20)
+
+        # REGISTAR DANOS/PERDAS 
+        def confirmar_dano():
+            selecionado = combo_mat_dano.get()
+            qtd_texto = entry_qtd_dano.get()
+            data_texto = entry_data_dano.get()
+
+            if not selecionado or qtd_texto == "" or data_texto == "":
+                messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=janela_mov)
+                return
+
+            try:
+                quantidade = int(qtd_texto)
+                if quantidade <= 0:
+                    messagebox.showerror("Erro", "A quantidade deve ser maior que zero!", parent=janela_mov)
+                    return
+            except ValueError:
+                messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=janela_mov)
+                return
+
+            id_mat = int(selecionado.split(" - ")[0])
+            try:
+                # Chama a função do seu backend
+                sistema.criar_danos(data_texto, quantidade, id_mat)
+                messagebox.showinfo("Sucesso", "Dano/Perda registado! O saldo foi reduzido.", parent=janela_mov)
+                entry_qtd_dano.delete(0, tk.END)
+                atualizar_combos_mov()  # Atualiza os números na interface
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao registar dano: {e}", parent=janela_mov)
+
+        # Layout Aba 2
+        tk.Label(aba_dano, text="Registar Material Danificado ou Perdido", font=("Arial", 14, "bold"), fg="red").pack(
+            pady=15)
+        tk.Label(aba_dano, text="Selecione o Material:").pack()
+        combo_mat_dano = ttk.Combobox(aba_dano, state="readonly", width=35)
+        combo_mat_dano.pack(pady=5)
+
+        tk.Label(aba_dano, text="Quantidade Danificada/Perdida:").pack()
+        entry_qtd_dano = tk.Entry(aba_dano, width=15)
+        entry_qtd_dano.pack(pady=5)
+
+        tk.Label(aba_dano, text="Data (ANO-MÊS-DIA):").pack()
+        entry_data_dano = tk.Entry(aba_dano, width=15)
+        entry_data_dano.insert(0, datetime.now().strftime("%Y-%m-%d"))  # Insere a data de hoje por defeito
+        entry_data_dano.pack(pady=5)
+
+        tk.Button(aba_dano, text="⚠️ Confirmar Baixa", command=confirmar_dano, bg="red", fg="white",
+                  font=("Arial", 10, "bold")).pack(pady=20)
+
+        # Inicializa os comboboxes com os dados do banco
+        atualizar_combos_mov()
+
+
+
 # ==========================================
 #        CONSTRUÇÃO DA JANELA PRINCIPAL
 # ==========================================
@@ -655,8 +788,9 @@ tk.Label(janela_principal, text="MENU PRINCIPAL", font=("Arial", 18, "bold")).pa
 
 tk.Button(janela_principal, text="1. Gerenciar Monitores", command=abrir_janela_monitor, width=30, height=2).pack(pady=10)
 tk.Button(janela_principal, text="2. Gerenciar Materiais", command=abrir_janela_material, width=30, height=2).pack(pady=10)
-tk.Button(janela_principal, text="3. Realizar Check-list Diário", command=abrir_janela_checklist, width=30, height=2).pack(pady=10)
-tk.Button(janela_principal, text="4. Gerar Relatório de Estoque", command=abrir_janela_relatorio, width=30, height=2, bg="#e6e6e6").pack(pady=10)
+tk.Button(janela_principal, text="3. Registrar Entradas e Perdas", command=abrir_janela_movimentacoes, width=30, height=2, bg="#f0f0f0").pack(pady=10)
+tk.Button(janela_principal, text="4. Realizar Check-list Diário", command=abrir_janela_checklist, width=30, height=2).pack(pady=10)
+tk.Button(janela_principal, text="5. Gerar Relatório de Estoque", command=abrir_janela_relatorio, width=30, height=2, bg="#e6e6e6").pack(pady=10)
 
 # O botão Sair agora chama o fechamento seguro em vez de um 'destroy' direto
 tk.Button(janela_principal, text="Sair do Sistema", command=fechar_sistema, bg="red", fg="white", width=20).pack(pady=40)

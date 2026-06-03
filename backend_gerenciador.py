@@ -58,7 +58,8 @@ class BancoDeDados:
             )
             ''')
 
-            # --- GATILHOS (TRIGGERS) ---
+             # GATILHOS/triggers
+
             self.cur.execute('''
             CREATE TRIGGER IF NOT EXISTS atualiza_material_entrada
             AFTER INSERT ON entrada
@@ -114,7 +115,7 @@ class BancoDeDados:
             self.conn.close()
 
 
-    # CADASTRAR (CREATE)
+    # CADASTRAR/create
 
     def criar_monitor(self, nome: str) -> bool:
         try:
@@ -162,7 +163,7 @@ class BancoDeDados:
             raise Exception(f"Erro ao registrar danos/perdas: {e}")
 
 
-    # LER / LISTAR (READ)
+    # LER/read
 
     def listar_monitores(self) -> list:
         try:
@@ -193,7 +194,7 @@ class BancoDeDados:
             raise Exception(f"Erro ao listar danos: {e}")
 
 
-    # ATUALIZAR (UPDATE)
+    # atualizar/UPDATE
 
     def atualizar_monitor(self, id_monitor: int, nome: str) -> bool:
         try:
@@ -242,7 +243,7 @@ class BancoDeDados:
             raise Exception(f"Erro ao atualizar danos: {e}")
 
 
-    # DELETAR
+    # DELETAR/delete
 
     def deletar_monitor(self, id_monitor: int) -> bool:
         try:
