@@ -3,7 +3,8 @@ from tkinter import messagebox
 from tkinter import ttk
 from backend_gerenciador import BancoDeDados
 import threading
-
+import relatorio
+import os
 
 sistema = BancoDeDados()
 
@@ -296,10 +297,37 @@ def abrir_janela_checklist():
 
     janela_checklist = tk.Toplevel(janela_principal)
     janela_checklist.title("Check-list Diário")
-    janela_checklist.geometry("1000x990")
+    janela_checklist.geometry("1000x700")
     janela_checklist.transient(janela_principal)
 
     tk.Label(janela_checklist, text="📝 Check-list de Materiais", font=("Arial", 16, "bold")).pack(pady=15)
+
+    # =======================================================
+    # SELEÇÃO DO MONITOR RESPONSÁVEL
+    # =======================================================
+    try:
+        monitores_db = sistema.listar_monitores()
+    except Exception as e:
+        messagebox.showerror("Erro", f"Erro ao buscar monitores: {e}", parent=janela_checklist)
+        janela_checklist.destroy()
+        return
+
+    if not monitores_db:
+        messagebox.showwarning("Aviso", "Você precisa cadastrar pelo menos um monitor antes de realizar o check-list!", parent=janela_checklist)
+        janela_checklist.destroy()
+        return
+
+    # Extrai apenas os nomes dos monitores para o Combobox
+    lista_monitores = [m[1] for m in monitores_db]
+
+    frame_monitor = tk.Frame(janela_checklist)
+    frame_monitor.pack(pady=10)
+
+    tk.Label(frame_monitor, text="Monitor Responsável:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
+    combo_monitor_resp = ttk.Combobox(frame_monitor, values=lista_monitores, state="readonly", width=25)
+    combo_monitor_resp.current(0)
+    combo_monitor_resp.pack(side="left", padx=5)
+    # =======================================================
 
     
     # SISTEMA DE ROLAGEM (CANVAS + SCROLLBAR)
@@ -343,7 +371,6 @@ def abrir_janela_checklist():
     # BUSCA DE DADOS E MONTAGEM DA LISTA
     
     try:
-        # USO DA NOVA API
         materiais = sistema.listar_materiais()
     except Exception as e:
         messagebox.showerror("Erro", str(e), parent=janela_checklist)
@@ -406,9 +433,11 @@ def abrir_janela_checklist():
         lista_entries[0].focus_set()
 
     
-    # SALVAR CHECKLIST E GERAR TXT
+    # SALVAR CHECKLIST E GERAR TXT / PNG
     
     def salvar_checklist():
+        monitor_responsavel = combo_monitor_resp.get()
+        
         agora_completo = datetime.now()
         agora_str = agora_completo.strftime("%d/%m/%Y às %H:%M:%S")
 
@@ -455,13 +484,26 @@ def abrir_janela_checklist():
             detalhes_relatorio.append(
                 f"{nome:<35} | {qtd_esperada:<9} | {qtd_encontrada:<10} | {status_txt:<15} | {obs_texto:<12} | {quarto_texto}")
 
-        nome_arquivo = f"Checklist_{agora_completo.strftime('%Y-%m-%d_%H%M%S')}.txt"
+        pasta_textos = "Relatorios_TXT"  # Nome da pasta que vai organizar os textos
+        
+        # Se a pasta ainda não existir, o sistema cria ela automaticamente
+        if not os.path.exists(pasta_textos):
+            os.makedirs(pasta_textos)
+            
+        # Define o nome do arquivo
+        nome_base_txt = f"Checklist_{agora_completo.strftime('%Y-%m-%d_%H%M%S')}.txt"
+        
+        # Junta a pasta com o nome do arquivo (Ex: Relatorios_TXT/Checklist_2026.txt)
+        nome_arquivo = os.path.join(pasta_textos, nome_base_txt)
+        
+        # 1. GERA O ARQUIVO TXT
         try:
             with open(nome_arquivo, "w", encoding="utf-8") as arquivo:
                 arquivo.write("=" * 105 + "\n")
                 arquivo.write("                                RELATÓRIO DE CHECK-LIST DIÁRIO\n")
                 arquivo.write("=" * 105 + "\n")
-                arquivo.write(f"Data e Hora da Conferência: {agora_str}\n\n")
+                arquivo.write(f"Data e Hora da Conferência: {agora_str}\n")
+                arquivo.write(f"Conferido por (Monitor): {monitor_responsavel}\n\n")
 
                 arquivo.write(
                     f"{'MATERIAL':<35} | {'ESPERADO':<9} | {'ENCONTRADO':<10} | {'STATUS':<15} | {'OBSERVAÇÃO':<12} | {'QUARTO'}\n")
@@ -483,23 +525,24 @@ def abrir_janela_checklist():
             messagebox.showerror("Erro", f"Erro ao gerar o arquivo txt: {e}", parent=janela_checklist)
             return
 
+        # 2. GERA O GRÁFICO NA ÁREA DE TRABALHO E ABRE NA TELA
+        try:
+            nome_imagem = relatorio.criar_grafico(nome_arquivo)
+            os.startfile(nome_imagem)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar ou abrir o gráfico em PNG: {e}", parent=janela_checklist)
 
-
-
-
-        # 3. Exibir os avisos na interface ANTES de iniciar o processo do WhatsApp
+        # 3. EXIBE AS MENSAGENS FINAIS
         if alertas:
-            mensagem_final = f"Check-list pronto '{nome_arquivo}'!\n\nAtenção aos Alertas:\n\n" + "\n".join(
+            mensagem_final = f"Check-list pronto '{nome_arquivo}' e gráfico gerado!\n\nAtenção aos Alertas:\n\n" + "\n".join(
                 alertas)
             messagebox.showwarning("Atenção!", mensagem_final, parent=janela_checklist)
         else:
             messagebox.showinfo("Sucesso",
-                                f"Check-list perfeito! Nenhum item faltando.\nRelatório '{nome_arquivo}' salvo.",
+                                f"Check-list perfeito! Nenhum item faltando.\nRelatório '{nome_arquivo}' e gráfico salvos com sucesso.",
                                 parent=janela_checklist)
 
-
-
-        # 5. Fechar a janela do checklist instantaneamente
+        # 4. FECHA A JANELA
         janela_checklist.unbind_all("<MouseWheel>")
         janela_checklist.unbind_all("<Button-4>")
         janela_checklist.unbind_all("<Button-5>")
@@ -515,8 +558,6 @@ def abrir_janela_checklist():
 
     tk.Button(janela_checklist, text="Salvar e Registrar Check-list", command=salvar_checklist, bg="#ff9900",
               font=("Arial", 11, "bold")).pack(pady=20)
-
-
 def abrir_janela_relatorio():
     try:
         # USO DA NOVA API
@@ -751,7 +792,7 @@ def fechar_sistema():
 # Associa o clique no 'X' vermelho da janela principal ao fechamento seguro
 janela_principal.protocol("WM_DELETE_WINDOW", fechar_sistema)
 
-# ==========================================
+
 
 tk.Label(janela_principal, text="MENU PRINCIPAL", font=("Arial", 18, "bold")).pack(pady=30)
 
