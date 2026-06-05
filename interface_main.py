@@ -1,610 +1,418 @@
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-from backend_gerenciador import BancoDeDados
-import threading
-import relatorio
+from datetime import datetime
 import os
+import threading # <-- NOVA IMPORTAÇÃO
+import servico_checklist
+from backend_gerenciador import BancoDeDados
 
-sistema = BancoDeDados()
+# =======================================================
+# JANELAS SECUNDÁRIAS (Monitores, Materiais, Movimentações e Relatórios continuam idênticas visualmente)
+# =======================================================
 
+class JanelaMonitor(tk.Toplevel):
+    def __init__(self, master, sistema):
+        super().__init__(master)
+        self.sistema = sistema
+        self.title("Gerenciar Monitores")
+        self.geometry("400x350")
+        self.transient(master)
 
-#        FUNÇÕES PARA ABRIR TELAS
+        self.abas = ttk.Notebook(self)
+        self.abas.pack(fill="both", expand=True, padx=10, pady=10)
 
+        self.aba_cadastrar = tk.Frame(self.abas)
+        self.aba_atualizar = tk.Frame(self.abas)
+        self.aba_deletar = tk.Frame(self.abas)
 
-def abrir_janela_monitor():
-    janela_monitor = tk.Toplevel(janela_principal)
-    janela_monitor.title("Gerenciar Monitores")
-    janela_monitor.geometry("400x350")
-    janela_monitor.transient(janela_principal)
+        self.abas.add(self.aba_cadastrar, text="Cadastrar Novo")
+        self.abas.add(self.aba_atualizar, text="Atualizar")
+        self.abas.add(self.aba_deletar, text="Deletar")
 
-    # Cria o "Controlador de Abas" (Notebook)
-    abas = ttk.Notebook(janela_monitor)
-    abas.pack(fill="both", expand=True, padx=10, pady=10)
+        self._construir_aba_cadastrar()
+        self._construir_aba_atualizar()
+        self._construir_aba_deletar()
+        self.atualizar_listas()
 
-    # Cria as três abas (Frames)
-    aba_cadastrar = tk.Frame(abas)
-    aba_atualizar = tk.Frame(abas)
-    aba_deletar = tk.Frame(abas)
+    def _construir_aba_cadastrar(self):
+        tk.Label(self.aba_cadastrar, text="Cadastrar Novo Monitor", font=("Arial", 14, "bold")).pack(pady=15)
+        tk.Label(self.aba_cadastrar, text="Nome do Monitor:").pack()
+        self.entry_nome_mon = tk.Entry(self.aba_cadastrar, width=30)
+        self.entry_nome_mon.pack(pady=5)
+        tk.Button(self.aba_cadastrar, text="Salvar Monitor", command=self.salvar_monitor, bg="green", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
 
-    # Adiciona as abas no painel principal
-    abas.add(aba_cadastrar, text="Cadastrar Novo")
-    abas.add(aba_atualizar, text="Atualizar")
-    abas.add(aba_deletar, text="Deletar")
+    def _construir_aba_atualizar(self):
+        tk.Label(self.aba_atualizar, text="Atualizar Nome do Monitor", font=("Arial", 14, "bold")).pack(pady=15)
+        tk.Label(self.aba_atualizar, text="Selecione o Monitor antigo:").pack()
+        self.combo_atualizar = ttk.Combobox(self.aba_atualizar, state="readonly", width=27)
+        self.combo_atualizar.pack(pady=5)
+        tk.Label(self.aba_atualizar, text="Digite o Novo Nome:").pack()
+        self.entry_novo_nome = tk.Entry(self.aba_atualizar, width=30)
+        self.entry_novo_nome.pack(pady=5)
+        tk.Button(self.aba_atualizar, text="Atualizar Nome", command=self.btn_atualizar_click, bg="#0052cc", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
 
-    
-    # LÓGICA COMPARTILHADA (ATUALIZAR LISTAS)
-    
-    def atualizar_listas():
-        # USO DA NOVA API (Sem SQL direto)
-        monitores_db = sistema.listar_monitores()
-        
-        lista_formatada = [f"{m[0]} - {m[1]}" for m in monitores_db]
-        
-        combo_atualizar['values'] = lista_formatada
-        combo_deletar['values'] = lista_formatada
-        
-        if lista_formatada:
-            combo_atualizar.current(0)
-            combo_deletar.current(0)
-        else:
-            combo_atualizar.set('')
-            combo_deletar.set('')
+    def _construir_aba_deletar(self):
+        tk.Label(self.aba_deletar, text="Deletar Monitor", font=("Arial", 14, "bold"), fg="red").pack(pady=15)
+        tk.Label(self.aba_deletar, text="Selecione o Monitor:").pack()
+        self.combo_deletar = ttk.Combobox(self.aba_deletar, state="readonly", width=27)
+        self.combo_deletar.pack(pady=5)
+        tk.Button(self.aba_deletar, text="🗑️ Deletar Monitor", command=self.btn_deletar_click, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
 
-    
-    # ABA 1: CADASTRAR
-    
-    def salvar_monitor():
-        nome = entry_nome_mon.get()
+    def atualizar_listas(self):
+        try:
+            monitores_db = self.sistema.listar_monitores()
+            lista_formatada = [f"{m[0]} - {m[1]}" for m in monitores_db]
+            self.combo_atualizar['values'] = lista_formatada
+            self.combo_deletar['values'] = lista_formatada
+            if lista_formatada:
+                self.combo_atualizar.current(0)
+                self.combo_deletar.current(0)
+            else:
+                self.combo_atualizar.set('')
+                self.combo_deletar.set('')
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao atualizar listas: {e}", parent=self)
+
+    def salvar_monitor(self):
+        nome = self.entry_nome_mon.get()
         if nome == "":
-            messagebox.showerror("Erro", "O nome é obrigatório!", parent=janela_monitor)
+            messagebox.showerror("Erro", "O nome é obrigatório!", parent=self)
             return
         try:
-            sistema.criar_monitor(nome)
-            messagebox.showinfo("Sucesso", f"Monitor '{nome}' cadastrado!", parent=janela_monitor)
-            entry_nome_mon.delete(0, tk.END)
-            atualizar_listas() 
+            self.sistema.criar_monitor(nome)
+            messagebox.showinfo("Sucesso", f"Monitor '{nome}' cadastrado!", parent=self)
+            self.entry_nome_mon.delete(0, tk.END)
+            self.atualizar_listas() 
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao salvar: {e}", parent=janela_monitor)
+            messagebox.showerror("Erro", f"Erro ao salvar: {e}", parent=self)
 
-    tk.Label(aba_cadastrar, text="Cadastrar Novo Monitor", font=("Arial", 14, "bold")).pack(pady=15)
-    tk.Label(aba_cadastrar, text="Nome do Monitor:").pack()
-    entry_nome_mon = tk.Entry(aba_cadastrar, width=30)
-    entry_nome_mon.pack(pady=5)
-    tk.Button(aba_cadastrar, text="Salvar Monitor", command=salvar_monitor, bg="green", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
-
-    
-    # ABA 2: ATUALIZAR
-   
-    def btn_atualizar_click():
-        selecionado = combo_atualizar.get()
-        novo_nome = entry_novo_nome.get()
-        
+    def btn_atualizar_click(self):
+        selecionado = self.combo_atualizar.get()
+        novo_nome = self.entry_novo_nome.get()
         if not selecionado or novo_nome == "":
-            messagebox.showerror("Erro", "Selecione um monitor e digite o novo nome!", parent=janela_monitor)
+            messagebox.showerror("Erro", "Selecione um monitor e digite o novo nome!", parent=self)
             return
-        
         id_mon = int(selecionado.split(" - ")[0])
         try:
-            sistema.atualizar_monitor(id_mon, novo_nome)
-            messagebox.showinfo("Sucesso", "Monitor atualizado com sucesso!", parent=janela_monitor)
-            entry_novo_nome.delete(0, tk.END)
-            atualizar_listas()
+            self.sistema.atualizar_monitor(id_mon, novo_nome)
+            messagebox.showinfo("Sucesso", "Monitor atualizado com sucesso!", parent=self)
+            self.entry_novo_nome.delete(0, tk.END)
+            self.atualizar_listas()
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro: {e}", parent=janela_monitor)
+            messagebox.showerror("Erro", f"Erro: {e}", parent=self)
 
-    tk.Label(aba_atualizar, text="Atualizar Nome do Monitor", font=("Arial", 14, "bold")).pack(pady=15)
-    tk.Label(aba_atualizar, text="Selecione o Monitor antigo:").pack()
-    combo_atualizar = ttk.Combobox(aba_atualizar, state="readonly", width=27)
-    combo_atualizar.pack(pady=5)
-    
-    tk.Label(aba_atualizar, text="Digite o Novo Nome:").pack()
-    entry_novo_nome = tk.Entry(aba_atualizar, width=30)
-    entry_novo_nome.pack(pady=5)
-    tk.Button(aba_atualizar, text="Atualizar Nome", command=btn_atualizar_click, bg="#0052cc", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
-
-   
-    # ABA 3: DELETAR
-    
-    def btn_deletar_click():
-        selecionado = combo_deletar.get()
+    def btn_deletar_click(self):
+        selecionado = self.combo_deletar.get()
         if not selecionado:
-            messagebox.showerror("Erro", "Selecione um monitor para deletar!", parent=janela_monitor)
+            messagebox.showerror("Erro", "Selecione um monitor para deletar!", parent=self)
             return
-            
-        resposta = messagebox.askyesno("Confirmar Exclusão", f"Você tem certeza que deseja deletar:\n\n{selecionado}?", parent=janela_monitor)
-        
+        resposta = messagebox.askyesno("Confirmar Exclusão", f"Você tem certeza que deseja deletar:\n\n{selecionado}?", parent=self)
         if resposta:
             id_mon = int(selecionado.split(" - ")[0])
             try:
-                sistema.deletar_monitor(id_mon)
-                messagebox.showinfo("Sucesso", "Monitor deletado do sistema!", parent=janela_monitor)
-                atualizar_listas()
+                self.sistema.deletar_monitor(id_mon)
+                messagebox.showinfo("Sucesso", "Monitor deletado do sistema!", parent=self)
+                self.atualizar_listas()
             except Exception as e:
-                messagebox.showerror("Erro", f"Erro: {e}", parent=janela_monitor)
-
-    tk.Label(aba_deletar, text="Deletar Monitor", font=("Arial", 14, "bold"), fg="red").pack(pady=15)
-    tk.Label(aba_deletar, text="Selecione o Monitor:").pack()
-    combo_deletar = ttk.Combobox(aba_deletar, state="readonly", width=27)
-    combo_deletar.pack(pady=5)
-    tk.Button(aba_deletar, text="🗑️ Deletar Monitor", command=btn_deletar_click, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
-
-    # Roda a função pela primeira vez para preencher as listas com quem já está no banco
-    atualizar_listas()
+                messagebox.showerror("Erro", f"Erro: {e}", parent=self)
 
 
-def abrir_janela_material():
-    janela_material = tk.Toplevel(janela_principal)
-    janela_material.title("Gerenciar Materiais")
-    janela_material.geometry("400x480") 
-    janela_material.transient(janela_principal)
+class JanelaMaterial(tk.Toplevel):
+    def __init__(self, master, sistema):
+        super().__init__(master)
+        self.sistema = sistema
+        self.title("Gerenciar Materiais")
+        self.geometry("400x480") 
+        self.transient(master)
 
-    abas = ttk.Notebook(janela_material)
-    abas.pack(fill="both", expand=True, padx=10, pady=10)
+        self.abas = ttk.Notebook(self)
+        self.abas.pack(fill="both", expand=True, padx=10, pady=10)
 
-    aba_cadastrar = tk.Frame(abas)
-    aba_atualizar = tk.Frame(abas)
-    aba_deletar = tk.Frame(abas)
+        self.aba_cadastrar = tk.Frame(self.abas)
+        self.aba_atualizar = tk.Frame(self.abas)
+        self.aba_deletar = tk.Frame(self.abas)
 
-    abas.add(aba_cadastrar, text="Cadastrar Novo")
-    abas.add(aba_atualizar, text="Atualizar")
-    abas.add(aba_deletar, text="Deletar")
+        self.abas.add(self.aba_cadastrar, text="Cadastrar Novo")
+        self.abas.add(self.aba_atualizar, text="Atualizar")
+        self.abas.add(self.aba_deletar, text="Deletar")
 
-    
-    # ATUALIZAR AS LISTAS 
-    
-    def atualizar_listas_mat():
-        # USO DA NOVA API
-        materiais_db = sistema.listar_materiais()
-        lista_formatada = [f"{m[0]} - {m[1]}" for m in materiais_db]
-        
-        combo_atualizar_mat['values'] = lista_formatada
-        combo_deletar_mat['values'] = lista_formatada
-        
-        if lista_formatada:
-            combo_atualizar_mat.current(0)
-            combo_deletar_mat.current(0)
-        else:
-            combo_atualizar_mat.set('')
-            combo_deletar_mat.set('')
+        self._construir_aba_cadastrar()
+        self._construir_aba_atualizar()
+        self._construir_aba_deletar()
+        self.atualizar_listas_mat()
 
-    
-    # ABA 1: Gerenciar Materiais
-    
-    def salvar_material():
-        nome = entry_nome.get()
-        quantidade_texto = entry_quantidade.get()
-        observacoes = entry_obs.get()
+    def _construir_aba_cadastrar(self):
+        tk.Label(self.aba_cadastrar, text="Gerenciar Materiais", font=("Arial", 14, "bold")).pack(pady=10)
+        tk.Label(self.aba_cadastrar, text="Nome do Material (ex: Raquete):").pack()
+        self.entry_nome = tk.Entry(self.aba_cadastrar, width=30)
+        self.entry_nome.pack(pady=2)
+        tk.Label(self.aba_cadastrar, text="Quantidade Inicial no Estoque:").pack()
+        self.entry_quantidade = tk.Entry(self.aba_cadastrar, width=30)
+        self.entry_quantidade.pack(pady=2)
+        tk.Label(self.aba_cadastrar, text="Observações (Marca, Cor, etc):").pack()
+        self.entry_obs = tk.Entry(self.aba_cadastrar, width=30)
+        self.entry_obs.pack(pady=2)
+        tk.Button(self.aba_cadastrar, text="Salvar Material", command=self.salvar_material, bg="#0052cc", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
 
+    def _construir_aba_atualizar(self):
+        tk.Label(self.aba_atualizar, text="Atualizar Material", font=("Arial", 14, "bold")).pack(pady=10)
+        tk.Label(self.aba_atualizar, text="Selecione o Material antigo:").pack()
+        self.combo_atualizar_mat = ttk.Combobox(self.aba_atualizar, state="readonly", width=27)
+        self.combo_atualizar_mat.pack(pady=2)
+        tk.Label(self.aba_atualizar, text="Novo Nome:").pack()
+        self.entry_novo_nome_mat = tk.Entry(self.aba_atualizar, width=30)
+        self.entry_novo_nome_mat.pack(pady=2)
+        tk.Label(self.aba_atualizar, text="Nova Quantidade:").pack()
+        self.entry_nova_qtd = tk.Entry(self.aba_atualizar, width=30)
+        self.entry_nova_qtd.pack(pady=2)
+        tk.Label(self.aba_atualizar, text="Novas Observações:").pack()
+        self.entry_novas_obs = tk.Entry(self.aba_atualizar, width=30)
+        self.entry_novas_obs.pack(pady=2)
+        tk.Button(self.aba_atualizar, text="Atualizar Material", command=self.btn_atualizar_mat_click, bg="#0052cc", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
+
+    def _construir_aba_deletar(self):
+        tk.Label(self.aba_deletar, text="Deletar Material", font=("Arial", 14, "bold"), fg="red").pack(pady=15)
+        tk.Label(self.aba_deletar, text="Selecione o Material:").pack()
+        self.combo_deletar_mat = ttk.Combobox(self.aba_deletar, state="readonly", width=27)
+        self.combo_deletar_mat.pack(pady=5)
+        tk.Button(self.aba_deletar, text="🗑️ Deletar Material", command=self.btn_deletar_mat_click, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
+
+    def atualizar_listas_mat(self):
+        try:
+            materiais_db = self.sistema.listar_materiais()
+            lista_formatada = [f"{m[0]} - {m[1]}" for m in materiais_db]
+            self.combo_atualizar_mat['values'] = lista_formatada
+            self.combo_deletar_mat['values'] = lista_formatada
+            if lista_formatada:
+                self.combo_atualizar_mat.current(0)
+                self.combo_deletar_mat.current(0)
+            else:
+                self.combo_atualizar_mat.set('')
+                self.combo_deletar_mat.set('')
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao atualizar listas: {e}", parent=self)
+
+    def salvar_material(self):
+        nome = self.entry_nome.get()
+        quantidade_texto = self.entry_quantidade.get()
+        observacoes = self.entry_obs.get()
         if nome == "" or quantidade_texto == "":
-            messagebox.showerror("Erro", "Nome e quantidade são obrigatórios!", parent=janela_material)
+            messagebox.showerror("Erro", "Nome e quantidade são obrigatórios!", parent=self)
             return
-
         try:
             quantidade = int(quantidade_texto)
         except ValueError:
-            messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=janela_material)
+            messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=self)
             return
-
         try:
-            sistema.criar_material(nome, quantidade, observacoes)
-            messagebox.showinfo("Sucesso", f"Material '{nome}' cadastrado!", parent=janela_material)
-            
-            entry_nome.delete(0, tk.END)
-            entry_quantidade.delete(0, tk.END)
-            entry_obs.delete(0, tk.END)
-            atualizar_listas_mat() 
+            self.sistema.criar_material(nome, quantidade, observacoes)
+            messagebox.showinfo("Sucesso", f"Material '{nome}' cadastrado!", parent=self)
+            self.entry_nome.delete(0, tk.END)
+            self.entry_quantidade.delete(0, tk.END)
+            self.entry_obs.delete(0, tk.END)
+            self.atualizar_listas_mat() 
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao salvar: {e}", parent=janela_material)
+            messagebox.showerror("Erro", f"Erro ao salvar: {e}", parent=self)
 
-    tk.Label(aba_cadastrar, text="Gerenciar Materiais", font=("Arial", 14, "bold")).pack(pady=10)
-    tk.Label(aba_cadastrar, text="Nome do Material (ex: Raquete):").pack()
-    entry_nome = tk.Entry(aba_cadastrar, width=30)
-    entry_nome.pack(pady=2)
-
-    tk.Label(aba_cadastrar, text="Quantidade Inicial no Estoque:").pack()
-    entry_quantidade = tk.Entry(aba_cadastrar, width=30)
-    entry_quantidade.pack(pady=2)
-
-    tk.Label(aba_cadastrar, text="Observações (Marca, Cor, etc):").pack()
-    entry_obs = tk.Entry(aba_cadastrar, width=30)
-    entry_obs.pack(pady=2)
-
-    tk.Button(aba_cadastrar, text="Salvar Material", command=salvar_material, bg="#0052cc", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
-
-    
-    # ABA 2: ATUALIZAR MATERIAL
-    
-    def btn_atualizar_mat_click():
-        selecionado = combo_atualizar_mat.get()
-        novo_nome = entry_novo_nome_mat.get()
-        nova_qtd_texto = entry_nova_qtd.get()
-        novas_obs = entry_novas_obs.get()
-        
+    def btn_atualizar_mat_click(self):
+        selecionado = self.combo_atualizar_mat.get()
+        novo_nome = self.entry_novo_nome_mat.get()
+        nova_qtd_texto = self.entry_nova_qtd.get()
+        novas_obs = self.entry_novas_obs.get()
         if not selecionado or novo_nome == "" or nova_qtd_texto == "":
-            messagebox.showerror("Erro", "Selecione o material, preencha o novo nome e a quantidade!", parent=janela_material)
+            messagebox.showerror("Erro", "Selecione o material, preencha o novo nome e a quantidade!", parent=self)
             return
-            
         try:
             nova_qtd = int(nova_qtd_texto)
         except ValueError:
-            messagebox.showerror("Erro", "A nova quantidade deve ser um número inteiro!", parent=janela_material)
+            messagebox.showerror("Erro", "A nova quantidade deve ser um número inteiro!", parent=self)
             return
-        
         id_mat = int(selecionado.split(" - ")[0])
         try:
-            sistema.atualizar_material(id_mat, novo_nome, nova_qtd, novas_obs)
-            messagebox.showinfo("Sucesso", "Material atualizado com sucesso!", parent=janela_material)
-            entry_novo_nome_mat.delete(0, tk.END)
-            entry_nova_qtd.delete(0, tk.END)
-            entry_novas_obs.delete(0, tk.END)
-            atualizar_listas_mat()
+            self.sistema.atualizar_material(id_mat, novo_nome, nova_qtd, novas_obs)
+            messagebox.showinfo("Sucesso", "Material atualizado com sucesso!", parent=self)
+            self.entry_novo_nome_mat.delete(0, tk.END)
+            self.entry_nova_qtd.delete(0, tk.END)
+            self.entry_novas_obs.delete(0, tk.END)
+            self.atualizar_listas_mat()
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro: {e}", parent=janela_material)
+            messagebox.showerror("Erro", f"Erro: {e}", parent=self)
 
-    tk.Label(aba_atualizar, text="Atualizar Material", font=("Arial", 14, "bold")).pack(pady=10)
-    tk.Label(aba_atualizar, text="Selecione o Material antigo:").pack()
-    combo_atualizar_mat = ttk.Combobox(aba_atualizar, state="readonly", width=27)
-    combo_atualizar_mat.pack(pady=2)
-    
-    tk.Label(aba_atualizar, text="Novo Nome:").pack()
-    entry_novo_nome_mat = tk.Entry(aba_atualizar, width=30)
-    entry_novo_nome_mat.pack(pady=2)
-
-    tk.Label(aba_atualizar, text="Nova Quantidade:").pack()
-    entry_nova_qtd = tk.Entry(aba_atualizar, width=30)
-    entry_nova_qtd.pack(pady=2)
-
-    tk.Label(aba_atualizar, text="Novas Observações:").pack()
-    entry_novas_obs = tk.Entry(aba_atualizar, width=30)
-    entry_novas_obs.pack(pady=2)
-
-    tk.Button(aba_atualizar, text="Atualizar Material", command=btn_atualizar_mat_click, bg="#0052cc", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
-
-    
-    # ABA 3: DELETAR MATERIAL
-   
-    def btn_deletar_mat_click():
-        selecionado = combo_deletar_mat.get()
+    def btn_deletar_mat_click(self):
+        selecionado = self.combo_deletar_mat.get()
         if not selecionado:
-            messagebox.showerror("Erro", "Selecione um material para deletar!", parent=janela_material)
+            messagebox.showerror("Erro", "Selecione um material para deletar!", parent=self)
             return
-            
-        resposta = messagebox.askyesno("Confirmar Exclusão", f"Você tem certeza que deseja deletar o material:\n\n{selecionado}?", parent=janela_material)
-        
+        resposta = messagebox.askyesno("Confirmar Exclusão", f"Você tem certeza que deseja deletar o material:\n\n{selecionado}?", parent=self)
         if resposta:
             id_mat = int(selecionado.split(" - ")[0])
             try:
-                sistema.deletar_material(id_mat)
-                messagebox.showinfo("Sucesso", "Material deletado do sistema!", parent=janela_material)
-                atualizar_listas_mat()
+                self.sistema.deletar_material(id_mat)
+                messagebox.showinfo("Sucesso", "Material deletado do sistema!", parent=self)
+                self.atualizar_listas_mat()
             except Exception as e:
-                messagebox.showerror("Erro", f"Erro: {e}", parent=janela_material)
-
-    tk.Label(aba_deletar, text="Deletar Material", font=("Arial", 14, "bold"), fg="red").pack(pady=15)
-    tk.Label(aba_deletar, text="Selecione o Material:").pack()
-    combo_deletar_mat = ttk.Combobox(aba_deletar, state="readonly", width=27)
-    combo_deletar_mat.pack(pady=5)
-    tk.Button(aba_deletar, text="🗑️ Deletar Material", command=btn_deletar_mat_click, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
-
-    atualizar_listas_mat()
+                messagebox.showerror("Erro", f"Erro: {e}", parent=self)
 
 
-def abrir_janela_checklist():
-    from datetime import date, datetime
-    import tkinter as tk
-    from tkinter import ttk, messagebox
+class JanelaMovimentacoes(tk.Toplevel):
+    def __init__(self, master, sistema):
+        super().__init__(master)
+        self.sistema = sistema
+        self.title("Movimentações de Estoque")
+        self.geometry("450x420")
+        self.transient(master)
 
-    janela_checklist = tk.Toplevel(janela_principal)
-    janela_checklist.title("Check-list Diário")
-    janela_checklist.geometry("1000x700")
-    janela_checklist.transient(janela_principal)
+        self.abas = ttk.Notebook(self)
+        self.abas.pack(fill="both", expand=True, padx=10, pady=10)
 
-    tk.Label(janela_checklist, text="📝 Check-list de Materiais", font=("Arial", 16, "bold")).pack(pady=15)
+        self.aba_entrada = tk.Frame(self.abas)
+        self.aba_dano = tk.Frame(self.abas)
 
-    # =======================================================
-    # SELEÇÃO DO MONITOR RESPONSÁVEL
-    # =======================================================
-    try:
-        monitores_db = sistema.listar_monitores()
-    except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao buscar monitores: {e}", parent=janela_checklist)
-        janela_checklist.destroy()
-        return
+        self.abas.add(self.aba_entrada, text="Registar Entrada")
+        self.abas.add(self.aba_dano, text="Registar Dano/Perda")
 
-    if not monitores_db:
-        messagebox.showwarning("Aviso", "Você precisa cadastrar pelo menos um monitor antes de realizar o check-list!", parent=janela_checklist)
-        janela_checklist.destroy()
-        return
+        self._construir_aba_entrada()
+        self._construir_aba_dano()
+        self.atualizar_combos_mov()
 
-    # Extrai apenas os nomes dos monitores para o Combobox
-    lista_monitores = [m[1] for m in monitores_db]
+    def _construir_aba_entrada(self):
+        tk.Label(self.aba_entrada, text="Registar Entrada de Material", font=("Arial", 14, "bold"), fg="green").pack(pady=15)
+        tk.Label(self.aba_entrada, text="Selecione o Material:").pack()
+        self.combo_mat_ent = ttk.Combobox(self.aba_entrada, state="readonly", width=35)
+        self.combo_mat_ent.pack(pady=5)
+        tk.Label(self.aba_entrada, text="Quantidade a Adicionar:").pack()
+        self.entry_qtd_ent = tk.Entry(self.aba_entrada, width=15)
+        self.entry_qtd_ent.pack(pady=5)
+        tk.Label(self.aba_entrada, text="Data (ANO-MÊS-DIA):").pack()
+        self.entry_data_ent = tk.Entry(self.aba_entrada, width=15)
+        self.entry_data_ent.insert(0, datetime.now().strftime("%Y-%m-%d"))  
+        self.entry_data_ent.pack(pady=5)
+        tk.Button(self.aba_entrada, text="📥 Confirmar Entrada", command=self.confirmar_entrada, bg="green", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
 
-    frame_monitor = tk.Frame(janela_checklist)
-    frame_monitor.pack(pady=10)
+    def _construir_aba_dano(self):
+        tk.Label(self.aba_dano, text="Registar Material Danificado ou Perdido", font=("Arial", 14, "bold"), fg="red").pack(pady=15)
+        tk.Label(self.aba_dano, text="Selecione o Material:").pack()
+        self.combo_mat_dano = ttk.Combobox(self.aba_dano, state="readonly", width=35)
+        self.combo_mat_dano.pack(pady=5)
+        tk.Label(self.aba_dano, text="Quantidade Danificada/Perdida:").pack()
+        self.entry_qtd_dano = tk.Entry(self.aba_dano, width=15)
+        self.entry_qtd_dano.pack(pady=5)
+        tk.Label(self.aba_dano, text="Data (ANO-MÊS-DIA):").pack()
+        self.entry_data_dano = tk.Entry(self.aba_dano, width=15)
+        self.entry_data_dano.insert(0, datetime.now().strftime("%Y-%m-%d"))  
+        self.entry_data_dano.pack(pady=5)
+        tk.Button(self.aba_dano, text="⚠️ Confirmar Baixa", command=self.confirmar_dano, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
 
-    tk.Label(frame_monitor, text="Monitor Responsável:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
-    combo_monitor_resp = ttk.Combobox(frame_monitor, values=lista_monitores, state="readonly", width=25)
-    combo_monitor_resp.current(0)
-    combo_monitor_resp.pack(side="left", padx=5)
-    # =======================================================
-
-    
-    # SISTEMA DE ROLAGEM (CANVAS + SCROLLBAR)
-    
-    frame_container = tk.Frame(janela_checklist)
-    frame_container.pack(fill="both", expand=True, padx=10, pady=10)
-
-    canvas = tk.Canvas(frame_container)
-    canvas.pack(side="left", fill="both", expand=True)
-
-    scrollbar = ttk.Scrollbar(frame_container, orient="vertical", command=canvas.yview)
-    scrollbar.pack(side="right", fill="y")
-    canvas.configure(yscrollcommand=scrollbar.set)
-
-    frame_lista = tk.Frame(canvas)
-    canvas.create_window((0, 0), window=frame_lista, anchor="nw")
-
-    def atualizar_scrollregion(event):
-        canvas.configure(scrollregion=canvas.bbox("all"))
-
-    frame_lista.bind("<Configure>", atualizar_scrollregion)
-
-    def rolar_mouse(event):
+    def atualizar_combos_mov(self):
         try:
-            if getattr(event, 'delta', 0) != 0:
-                direcao = int(-1 * (event.delta / abs(event.delta)))
-                canvas.yview_scroll(direcao, "units")
-            elif getattr(event, 'num', 0) != 0:
-                if event.num == 4:
-                    canvas.yview_scroll(-1, "units")
-                elif event.num == 5:
-                    canvas.yview_scroll(1, "units")
-        except Exception:
-            pass
-
-    janela_checklist.bind_all("<MouseWheel>", rolar_mouse)
-    janela_checklist.bind_all("<Button-4>", rolar_mouse)
-    janela_checklist.bind_all("<Button-5>", rolar_mouse)
-
-    
-    # BUSCA DE DADOS E MONTAGEM DA LISTA
-    
-    try:
-        materiais = sistema.listar_materiais()
-    except Exception as e:
-        messagebox.showerror("Erro", str(e), parent=janela_checklist)
-        return
-
-    if not materiais:
-        tk.Label(frame_lista, text="Nenhum material cadastrado no sistema.", fg="red").grid(row=0, column=0)
-        return
-
-    tk.Label(frame_lista, text="Material", font=("Arial", 10, "bold"), width=35, anchor="w").grid(row=0, column=0, padx=5)
-    tk.Label(frame_lista, text="Esperado", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5)
-    tk.Label(frame_lista, text="Encontrado", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=5)
-    tk.Label(frame_lista, text="Observação", font=("Arial", 10, "bold")).grid(row=0, column=3, padx=5)
-    tk.Label(frame_lista, text="Quarto", font=("Arial", 10, "bold")).grid(row=0, column=4, padx=5)
-
-    entradas_checklist = {}
-    lista_entries = []
-
-    for i, mat in enumerate(materiais):
-        id_mat = mat[0]
-        nome = mat[1]
-        qtd_esperada = mat[2]
-
-        linha = i + 1
-
-        tk.Label(frame_lista, text=nome, width=35, anchor="w").grid(row=linha, column=0, pady=5, padx=5)
-        tk.Label(frame_lista, text=str(qtd_esperada)).grid(row=linha, column=1, pady=5, padx=5)
-
-        entry_qtd = tk.Entry(frame_lista, width=10)
-        entry_qtd.grid(row=linha, column=2, pady=5, padx=5)
-
-        opcoes_obs = ["", "Pendente", "Danificado"]
-        combo_obs = ttk.Combobox(frame_lista, values=opcoes_obs, state="readonly", width=12)
-        combo_obs.current(0)
-        combo_obs.grid(row=linha, column=3, pady=5, padx=5)
-
-        combo_obs.bind("<MouseWheel>", lambda e: "break")
-        combo_obs.bind("<Button-4>", lambda e: "break")
-        combo_obs.bind("<Button-5>", lambda e: "break")
-
-        entry_quarto = tk.Entry(frame_lista, width=10)
-        entry_quarto.grid(row=linha, column=4, pady=5, padx=5)
-
-        entradas_checklist[id_mat] = (nome, qtd_esperada, entry_qtd, combo_obs, entry_quarto)
-        lista_entries.append(entry_qtd)
-
-    
-    # NAVEGAÇÃO COM AS SETAS DO TECLADO
-   
-    def mover_foco(event, direcao, index):
-        novo_index = index + direcao
-        if 0 <= novo_index < len(lista_entries):
-            lista_entries[novo_index].focus_set()
-
-    for index, entry in enumerate(lista_entries):
-        entry.bind("<Up>", lambda event, idx=index: mover_foco(event, -1, idx))
-        entry.bind("<Down>", lambda event, idx=index: mover_foco(event, 1, idx))
-
-    if lista_entries:
-        lista_entries[0].focus_set()
-
-    
-    # SALVAR CHECKLIST E GERAR TXT / PNG
-    
-    def salvar_checklist():
-        monitor_responsavel = combo_monitor_resp.get()
-        
-        agora_completo = datetime.now()
-        agora_str = agora_completo.strftime("%d/%m/%Y às %H:%M:%S")
-
-        alertas = []
-        detalhes_relatorio = []
-
-        for id_mat, dados in entradas_checklist.items():
-            nome, qtd_esperada, entry, combo_obs, entry_quarto = dados
-
-            qtd_texto = entry.get()
-            obs_texto = combo_obs.get() or "-"
-            quarto_texto = entry_quarto.get().strip() or "-"
-
-            if qtd_texto == "":
-                messagebox.showerror("Erro", f"Você esqueceu de preencher a quantidade de '{nome}'.", parent=janela_checklist)
-                return
-
-            try:
-                qtd_encontrada = int(qtd_texto)
-            except ValueError:
-                messagebox.showerror("Erro", f"A quantidade de '{nome}' deve ser um número!", parent=janela_checklist)
-                return
-
-            status_txt = "OK"
-
-            info_extra = []
-            if obs_texto != "-":
-                info_extra.append(f"Obs: {obs_texto}")
-            if quarto_texto != "-":
-                info_extra.append(f"Qto: {quarto_texto}")
-
-            aviso_extra = f" - ({' | '.join(info_extra)})" if info_extra else ""
-
-            if qtd_encontrada < qtd_esperada:
-                diferenca = qtd_esperada - qtd_encontrada
-                alertas.append(f"⚠️ Faltam {diferenca}x '{nome}'{aviso_extra} (Anotado no relatório)")
-                status_txt = f"FALTAM {diferenca}"
-
-            elif qtd_encontrada > qtd_esperada:
-                sobra = qtd_encontrada - qtd_esperada
-                alertas.append(f"❓ Sobram {sobra}x '{nome}'{aviso_extra} (Anotado no relatório)")
-                status_txt = f"SOBRAM {sobra}"
-
-            detalhes_relatorio.append(
-                f"{nome:<35} | {qtd_esperada:<9} | {qtd_encontrada:<10} | {status_txt:<15} | {obs_texto:<12} | {quarto_texto}")
-
-        pasta_textos = "Relatorios_TXT"  # Nome da pasta que vai organizar os textos
-        
-        # Se a pasta ainda não existir, o sistema cria ela automaticamente
-        if not os.path.exists(pasta_textos):
-            os.makedirs(pasta_textos)
-            
-        # Define o nome do arquivo
-        nome_base_txt = f"Checklist_{agora_completo.strftime('%Y-%m-%d_%H%M%S')}.txt"
-        
-        # Junta a pasta com o nome do arquivo (Ex: Relatorios_TXT/Checklist_2026.txt)
-        nome_arquivo = os.path.join(pasta_textos, nome_base_txt)
-        
-        # 1. GERA O ARQUIVO TXT
-        try:
-            with open(nome_arquivo, "w", encoding="utf-8") as arquivo:
-                arquivo.write("=" * 105 + "\n")
-                arquivo.write("                                RELATÓRIO DE CHECK-LIST DIÁRIO\n")
-                arquivo.write("=" * 105 + "\n")
-                arquivo.write(f"Data e Hora da Conferência: {agora_str}\n")
-                arquivo.write(f"Conferido por (Monitor): {monitor_responsavel}\n\n")
-
-                arquivo.write(
-                    f"{'MATERIAL':<35} | {'ESPERADO':<9} | {'ENCONTRADO':<10} | {'STATUS':<15} | {'OBSERVAÇÃO':<12} | {'QUARTO'}\n")
-                arquivo.write("-" * 105 + "\n")
-
-                for linha in detalhes_relatorio:
-                    arquivo.write(linha + "\n")
-
-                arquivo.write("\n" + "=" * 105 + "\n")
-                arquivo.write("RESUMO DE DIVERGÊNCIAS E ANOTAÇÕES:\n")
-                if alertas:
-                    for alerta in alertas:
-                        arquivo.write(alerta + "\n")
-                else:
-                    arquivo.write("Nenhuma divergência de quantidade encontrada. Estoque perfeito!\n")
-                arquivo.write("=" * 105 + "\n")
-
+            materiais_db = self.sistema.listar_materiais()
+            lista_formatada = [f"{m[0]} - {m[1]} (Atual: {m[2]})" for m in materiais_db]
+            self.combo_mat_ent['values'] = lista_formatada
+            self.combo_mat_dano['values'] = lista_formatada
+            if lista_formatada:
+                self.combo_mat_ent.current(0)
+                self.combo_mat_dano.current(0)
+            else:
+                self.combo_mat_ent.set('')
+                self.combo_mat_dano.set('')
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar o arquivo txt: {e}", parent=janela_checklist)
+            messagebox.showerror("Erro", f"Erro ao carregar materiais: {e}", parent=self)
+
+    def confirmar_entrada(self):
+        selecionado = self.combo_mat_ent.get()
+        qtd_texto = self.entry_qtd_ent.get()
+        data_texto = self.entry_data_ent.get()
+        if not selecionado or qtd_texto == "" or data_texto == "":
+            messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=self)
+            return
+        try:
+            quantidade = int(qtd_texto)
+            if quantidade <= 0:
+                messagebox.showerror("Erro", "A quantidade deve ser maior que zero!", parent=self)
+                return
+        except ValueError:
+            messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=self)
+            return
+        id_mat = int(selecionado.split(" - ")[0])
+        try:
+            self.sistema.criar_entrada(data_texto, quantidade, id_mat)
+            messagebox.showinfo("Sucesso", "Entrada de estoque registada! O saldo foi atualizado.", parent=self)
+            self.entry_qtd_ent.delete(0, tk.END)
+            self.atualizar_combos_mov() 
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao registar entrada: {e}", parent=self)
+
+    def confirmar_dano(self):
+        selecionado = self.combo_mat_dano.get()
+        qtd_texto = self.entry_qtd_dano.get()
+        data_texto = self.entry_data_dano.get()
+        if not selecionado or qtd_texto == "" or data_texto == "":
+            messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=self)
+            return
+        try:
+            quantidade = int(qtd_texto)
+            if quantidade <= 0:
+                messagebox.showerror("Erro", "A quantidade deve ser maior que zero!", parent=self)
+                return
+        except ValueError:
+            messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=self)
+            return
+        id_mat = int(selecionado.split(" - ")[0])
+        try:
+            self.sistema.criar_danos(data_texto, quantidade, id_mat)
+            messagebox.showinfo("Sucesso", "Dano/Perda registado! O saldo foi reduzido.", parent=self)
+            self.entry_qtd_dano.delete(0, tk.END)
+            self.atualizar_combos_mov()  
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao registar dano: {e}", parent=self)
+
+class JanelaRelatorio(tk.Toplevel):
+    def __init__(self, master, sistema):
+        super().__init__(master)
+        self.sistema = sistema
+        self.title("Gerar Relatório")
+        self.geometry("300x200")
+        self.transient(master)
+
+        try:
+            monitores_db = self.sistema.listar_monitores()
+        except Exception as e:
+            messagebox.showerror("Erro", str(e), parent=self)
+            self.destroy()
+            return
+        
+        if not monitores_db:
+            messagebox.showwarning("Aviso", "Você precisa cadastrar pelo menos um monitor primeiro para gerar o relatório!", parent=self)
+            self.destroy()
             return
 
-        # 2. GERA O GRÁFICO NA ÁREA DE TRABALHO E ABRE NA TELA
-        try:
-            nome_imagem = relatorio.criar_grafico(nome_arquivo)
-            os.startfile(nome_imagem)
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar ou abrir o gráfico em PNG: {e}", parent=janela_checklist)
+        self.lista_monitores = [linha[1] for linha in monitores_db]
 
-        # 3. EXIBE AS MENSAGENS FINAIS
-        if alertas:
-            mensagem_final = f"Check-list pronto '{nome_arquivo}' e gráfico gerado!\n\nAtenção aos Alertas:\n\n" + "\n".join(
-                alertas)
-            messagebox.showwarning("Atenção!", mensagem_final, parent=janela_checklist)
-        else:
-            messagebox.showinfo("Sucesso",
-                                f"Check-list perfeito! Nenhum item faltando.\nRelatório '{nome_arquivo}' e gráfico salvos com sucesso.",
-                                parent=janela_checklist)
+        tk.Label(self, text="Quem está gerando este relatório?", font=("Arial", 11, "bold")).pack(pady=15)
+        self.monitor_selecionado = tk.StringVar(self)
+        self.monitor_selecionado.set(self.lista_monitores[0]) 
+        menu_monitores = tk.OptionMenu(self, self.monitor_selecionado, *self.lista_monitores)
+        menu_monitores.pack(pady=10)
+        tk.Button(self, text="Gerar Relatório", command=self.confirmar_e_gerar, bg="blue", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
 
-        # 4. FECHA A JANELA
-        janela_checklist.unbind_all("<MouseWheel>")
-        janela_checklist.unbind_all("<Button-4>")
-        janela_checklist.unbind_all("<Button-5>")
-        janela_checklist.destroy()
-
-    def ao_fechar():
-        janela_checklist.unbind_all("<MouseWheel>")
-        janela_checklist.unbind_all("<Button-4>")
-        janela_checklist.unbind_all("<Button-5>")
-        janela_checklist.destroy()
-
-    janela_checklist.protocol("WM_DELETE_WINDOW", ao_fechar)
-
-    tk.Button(janela_checklist, text="Salvar e Registrar Check-list", command=salvar_checklist, bg="#ff9900",
-              font=("Arial", 11, "bold")).pack(pady=20)
-def abrir_janela_relatorio():
-    try:
-        # USO DA NOVA API
-        monitores_db = sistema.listar_monitores()
-    except Exception as e:
-        messagebox.showerror("Erro", str(e))
-        return
-    
-    if not monitores_db:
-        messagebox.showwarning("Aviso", "Você precisa cadastrar pelo menos um monitor primeiro para gerar o relatório!")
-        return
-
-    # Ajuste de índice: agora monitores_db traz (id_monitor, nome), então nome é linha[1]
-    lista_monitores = [linha[1] for linha in monitores_db]
-
-    janela_rel = tk.Toplevel(janela_principal)
-    janela_rel.title("Gerar Relatório")
-    janela_rel.geometry("300x200")
-    janela_rel.transient(janela_principal)
-
-    tk.Label(janela_rel, text="Quem está gerando este relatório?", font=("Arial", 11, "bold")).pack(pady=15)
-
-    monitor_selecionado = tk.StringVar(janela_rel)
-    monitor_selecionado.set(lista_monitores[0]) 
-
-    menu_monitores = tk.OptionMenu(janela_rel, monitor_selecionado, *lista_monitores)
-    menu_monitores.pack(pady=10)
-
-    def confirmar_e_gerar():
-        from datetime import datetime
-        
-        nome_responsavel = monitor_selecionado.get()
+    def confirmar_e_gerar(self):
+        nome_responsavel = self.monitor_selecionado.get()
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
         nome_arquivo = f"Relatorio_Inventario_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.txt"
         
+        # 🟢 NÍVEL 2: CAMINHOS ABSOLUTOS
+        diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+        caminho_arquivo = os.path.join(diretorio_atual, nome_arquivo)
+        
         try:
-            # USO DA NOVA API
-            materiais = sistema.listar_materiais()
-            
-            with open(nome_arquivo, "w", encoding="utf-8") as arquivo:
+            materiais = self.sistema.listar_materiais()
+            with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
                 arquivo.write("=" * 70 + "\n")
                 arquivo.write("     RELATÓRIO OFICIAL DE INVENTÁRIO - LAZER\n")
                 arquivo.write("=" * 70 + "\n")
                 arquivo.write(f"Documento gerado em: {agora}\n\n")
-                
                 arquivo.write("--- POSIÇÃO ATUAL DO ESTOQUE ---\n\n")
-                
                 if not materiais:
                     arquivo.write("Nenhum material cadastrado no sistema.\n")
                 else:
@@ -613,196 +421,265 @@ def abrir_janela_relatorio():
                     for mat in materiais:
                         obs = mat[3] if mat[3] else "Nenhuma"
                         arquivo.write(f"{mat[0]:<5} | {mat[1]:<25} | {mat[2]:<5} | {obs}\n")
-                
                 arquivo.write("\n" + "=" * 70 + "\n")
                 arquivo.write(f"Relatório gerado e conferido por: {nome_responsavel}\n")
                 arquivo.write("=" * 70 + "\n")
             
-            messagebox.showinfo("Sucesso", f"Relatório gerado com sucesso!\n\nSalvo como: {nome_arquivo}", parent=janela_rel)
-            janela_rel.destroy()
-            
+            messagebox.showinfo("Sucesso", f"Relatório gerado com sucesso!\n\nSalvo em: {caminho_arquivo}", parent=self)
+            self.destroy()
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar o documento: {e}", parent=janela_rel)
-
-    tk.Button(janela_rel, text="Gerar Relatório", command=confirmar_e_gerar, bg="blue", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
-
-def abrir_janela_movimentacoes():
-        from datetime import datetime
-
-        janela_mov = tk.Toplevel(janela_principal)
-        janela_mov.title("Movimentações de Stock")
-        janela_mov.geometry("450x420")
-        janela_mov.transient(janela_principal)
-
-        # Criação das abas
-        abas = ttk.Notebook(janela_mov)
-        abas.pack(fill="both", expand=True, padx=10, pady=10)
-
-        aba_entrada = tk.Frame(abas)
-        aba_dano = tk.Frame(abas)
-
-        abas.add(aba_entrada, text="Registar Entrada")
-        abas.add(aba_dano, text="Registar Dano/Perda")
-
-        # Função partilhada para carregar e atualizar os materiais disponíveis
-        def atualizar_combos_mov():
-            materiais_db = sistema.listar_materiais()
-            # Mostra o ID, Nome e a quantidade atual em stock
-            lista_formatada = [f"{m[0]} - {m[1]} (Atual: {m[2]})" for m in materiais_db]
-
-            combo_mat_ent['values'] = lista_formatada
-            combo_mat_dano['values'] = lista_formatada
-
-            if lista_formatada:
-                combo_mat_ent.current(0)
-                combo_mat_dano.current(0)
-            else:
-                combo_mat_ent.set('')
-                combo_mat_dano.set('')
-
-        # --- LÓGICA DA ABA 1: REGISTAR ENTRADA ---
-        def confirmar_entrada():
-            selecionado = combo_mat_ent.get()
-            qtd_texto = entry_qtd_ent.get()
-            data_texto = entry_data_ent.get()
-
-            if not selecionado or qtd_texto == "" or data_texto == "":
-                messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=janela_mov)
-                return
-
-            try:
-                quantidade = int(qtd_texto)
-                if quantidade <= 0:
-                    messagebox.showerror("Erro", "A quantidade deve ser maior que zero!", parent=janela_mov)
-                    return
-            except ValueError:
-                messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=janela_mov)
-                return
-
-            id_mat = int(selecionado.split(" - ")[0])
-            try:
-                # Chama a função do seu backend
-                sistema.criar_entrada(data_texto, quantidade, id_mat)
-                messagebox.showinfo("Sucesso", "Entrada de stock registada! O saldo foi atualizado.", parent=janela_mov)
-                entry_qtd_ent.delete(0, tk.END)
-                atualizar_combos_mov()  # Atualiza os números na interface
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao registar entrada: {e}", parent=janela_mov)
-
-        # Layout Aba 1
-        tk.Label(aba_entrada, text="Registar Entrada de Material", font=("Arial", 14, "bold"), fg="green").pack(pady=15)
-        tk.Label(aba_entrada, text="Selecione o Material:").pack()
-        combo_mat_ent = ttk.Combobox(aba_entrada, state="readonly", width=35)
-        combo_mat_ent.pack(pady=5)
-
-        tk.Label(aba_entrada, text="Quantidade a Adicionar:").pack()
-        entry_qtd_ent = tk.Entry(aba_entrada, width=15)
-        entry_qtd_ent.pack(pady=5)
-
-        tk.Label(aba_entrada, text="Data (ANO-MÊS-DIA):").pack()
-        entry_data_ent = tk.Entry(aba_entrada, width=15)
-        entry_data_ent.insert(0, datetime.now().strftime("%Y-%m-%d"))  # Insere a data de hoje por defeito
-        entry_data_ent.pack(pady=5)
-
-        tk.Button(aba_entrada, text="📥 Confirmar Entrada", command=confirmar_entrada, bg="green", fg="white",
-                  font=("Arial", 10, "bold")).pack(pady=20)
-
-        # REGISTAR DANOS/PERDAS
-        def confirmar_dano():
-            selecionado = combo_mat_dano.get()
-            qtd_texto = entry_qtd_dano.get()
-            data_texto = entry_data_dano.get()
-
-            if not selecionado or qtd_texto == "" or data_texto == "":
-                messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=janela_mov)
-                return
-
-            try:
-                quantidade = int(qtd_texto)
-                if quantidade <= 0:
-                    messagebox.showerror("Erro", "A quantidade deve ser maior que zero!", parent=janela_mov)
-                    return
-            except ValueError:
-                messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=janela_mov)
-                return
-
-            id_mat = int(selecionado.split(" - ")[0])
-            try:
-                # Chama a função do seu backend
-                sistema.criar_danos(data_texto, quantidade, id_mat)
-                messagebox.showinfo("Sucesso", "Dano/Perda registado! O saldo foi reduzido.", parent=janela_mov)
-                entry_qtd_dano.delete(0, tk.END)
-                atualizar_combos_mov()  # Atualiza os números na interface
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao registar dano: {e}", parent=janela_mov)
-
-        # Layout Aba 2
-        tk.Label(aba_dano, text="Registar Material Danificado ou Perdido", font=("Arial", 14, "bold"), fg="red").pack(
-            pady=15)
-        tk.Label(aba_dano, text="Selecione o Material:").pack()
-        combo_mat_dano = ttk.Combobox(aba_dano, state="readonly", width=35)
-        combo_mat_dano.pack(pady=5)
-
-        tk.Label(aba_dano, text="Quantidade Danificada/Perdida:").pack()
-        entry_qtd_dano = tk.Entry(aba_dano, width=15)
-        entry_qtd_dano.pack(pady=5)
-
-        tk.Label(aba_dano, text="Data (ANO-MÊS-DIA):").pack()
-        entry_data_dano = tk.Entry(aba_dano, width=15)
-        entry_data_dano.insert(0, datetime.now().strftime("%Y-%m-%d"))  # Insere a data de hoje por defeito
-        entry_data_dano.pack(pady=5)
-
-        tk.Button(aba_dano, text="⚠️ Confirmar Baixa", command=confirmar_dano, bg="red", fg="white",
-                  font=("Arial", 10, "bold")).pack(pady=20)
-
-        # Inicializa os comboboxes com os dados do banco
-        atualizar_combos_mov()
+            messagebox.showerror("Erro", f"Erro ao gerar o documento: {e}", parent=self)
 
 
+# =======================================================
+# JANELA DE CHECK-LIST (Agora com Threading e Scroll seguro)
+# =======================================================
 
-# ==========================================
-#        CONSTRUÇÃO DA JANELA PRINCIPAL
-# ==========================================
+class JanelaChecklist(tk.Toplevel):
+    def __init__(self, master, sistema):
+        super().__init__(master)
+        self.sistema = sistema
+        self.title("Check-list Diário")
+        self.geometry("1000x700")
+        self.transient(master)
 
-janela_principal = tk.Tk()
-janela_principal.title("📦 MATERIAIS BBR - LAZER")
+        self.entradas_checklist = {}
+        self.lista_entries = []
 
-largura_janela = 400
-altura_janela = 500
+        tk.Label(self, text="📝 Check-list de Materiais", font=("Arial", 16, "bold")).pack(pady=15)
 
-largura_tela = janela_principal.winfo_screenwidth()
-altura_tela = janela_principal.winfo_screenheight()
+        if not self._configurar_monitor_responsavel():
+            return
 
-pos_x = (largura_tela // 2) - (largura_janela // 2)
-pos_y = (altura_tela // 2) - (altura_janela // 2)
+        self._configurar_canvas()
+        self._carregar_materiais()
 
-janela_principal.geometry(f"{largura_janela}x{altura_janela}+{pos_x}+{pos_y}")
+        # Botão salvo em uma variável para podermos desativá-lo durante o Threading
+        self.btn_salvar = tk.Button(self, text="Salvar e Registrar Check-list", command=self.iniciar_salvamento, bg="#ff9900", font=("Arial", 11, "bold"))
+        self.btn_salvar.pack(pady=20)
 
-# ==========================================
-# FECHAMENTO SEGURO
-# ==========================================
-def fechar_sistema():
-    """Garante que o banco de dados será fechado antes do programa encerrar."""
-    try:
-        sistema.fechar_conexao()
-    except Exception:
-        pass # Se der erro ao fechar, apenas ignora e força a saída
-    janela_principal.destroy()
+    def _configurar_monitor_responsavel(self):
+        try:
+            monitores_db = self.sistema.listar_monitores()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao buscar monitores: {e}", parent=self)
+            self.destroy()
+            return False
 
-# Associa o clique no 'X' vermelho da janela principal ao fechamento seguro
-janela_principal.protocol("WM_DELETE_WINDOW", fechar_sistema)
+        if not monitores_db:
+            messagebox.showwarning("Aviso", "Você precisa cadastrar pelo menos um monitor antes de realizar o check-list!", parent=self)
+            self.destroy()
+            return False
+
+        lista_monitores = [m[1] for m in monitores_db]
+        frame_monitor = tk.Frame(self)
+        frame_monitor.pack(pady=10)
+        tk.Label(frame_monitor, text="Monitor Responsável:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
+        self.combo_monitor_resp = ttk.Combobox(frame_monitor, values=lista_monitores, state="readonly", width=25)
+        self.combo_monitor_resp.current(0)
+        self.combo_monitor_resp.pack(side="left", padx=5)
+        return True
+
+    def _configurar_canvas(self):
+        self.frame_container = tk.Frame(self)
+        self.frame_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.canvas = tk.Canvas(self.frame_container)
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.scrollbar = ttk.Scrollbar(self.frame_container, orient="vertical", command=self.canvas.yview)
+        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.frame_lista = tk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.frame_lista, anchor="nw")
+        self.frame_lista.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+
+        # 🟢 NÍVEL 3: CORREÇÃO DO BUG DO SCROLL (Isolamento de Evento)
+        # O mouse wheel só ativa quando o mouse ENTRA na área da lista, e desativa quando SAI.
+        self.frame_container.bind("<Enter>", self._ativar_scroll)
+        self.frame_container.bind("<Leave>", self._desativar_scroll)
+
+    def _ativar_scroll(self, event):
+        self.bind_all("<MouseWheel>", self.rolar_mouse)
+        self.bind_all("<Button-4>", self.rolar_mouse)
+        self.bind_all("<Button-5>", self.rolar_mouse)
+
+    def _desativar_scroll(self, event):
+        self.unbind_all("<MouseWheel>")
+        self.unbind_all("<Button-4>")
+        self.unbind_all("<Button-5>")
+
+    def rolar_mouse(self, event):
+        try:
+            if getattr(event, 'delta', 0) != 0:
+                direcao = int(-1 * (event.delta / abs(event.delta)))
+                self.canvas.yview_scroll(direcao, "units")
+            elif getattr(event, 'num', 0) != 0:
+                if event.num == 4:
+                    self.canvas.yview_scroll(-1, "units")
+                elif event.num == 5:
+                    self.canvas.yview_scroll(1, "units")
+        except Exception:
+            pass
+
+    def mover_foco(self, event, direcao, index):
+        novo_index = index + direcao
+        if 0 <= novo_index < len(self.lista_entries):
+            self.lista_entries[novo_index].focus_set()
+
+    def _carregar_materiais(self):
+        try:
+            materiais = self.sistema.listar_materiais()
+        except Exception as e:
+            messagebox.showerror("Erro", str(e), parent=self)
+            return
+
+        if not materiais:
+            tk.Label(self.frame_lista, text="Nenhum material cadastrado no sistema.", fg="red").grid(row=0, column=0)
+            return
+
+        tk.Label(self.frame_lista, text="Material", font=("Arial", 10, "bold"), width=35, anchor="w").grid(row=0, column=0, padx=5)
+        tk.Label(self.frame_lista, text="Esperado", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5)
+        tk.Label(self.frame_lista, text="Encontrado", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=5)
+        tk.Label(self.frame_lista, text="Observação", font=("Arial", 10, "bold")).grid(row=0, column=3, padx=5)
+        tk.Label(self.frame_lista, text="Quarto", font=("Arial", 10, "bold")).grid(row=0, column=4, padx=5)
+
+        for i, mat in enumerate(materiais):
+            id_mat, nome, qtd_esperada = mat[0], mat[1], mat[2]
+            linha = i + 1
+
+            tk.Label(self.frame_lista, text=nome, width=35, anchor="w").grid(row=linha, column=0, pady=5, padx=5)
+            tk.Label(self.frame_lista, text=str(qtd_esperada)).grid(row=linha, column=1, pady=5, padx=5)
+
+            entry_qtd = tk.Entry(self.frame_lista, width=10)
+            entry_qtd.grid(row=linha, column=2, pady=5, padx=5)
+
+            combo_obs = ttk.Combobox(self.frame_lista, values=["", "Pendente", "Danificado"], state="readonly", width=12)
+            combo_obs.current(0)
+            combo_obs.grid(row=linha, column=3, pady=5, padx=5)
+            combo_obs.bind("<MouseWheel>", lambda e: "break")
+            combo_obs.bind("<Button-4>", lambda e: "break")
+            combo_obs.bind("<Button-5>", lambda e: "break")
+
+            entry_quarto = tk.Entry(self.frame_lista, width=10)
+            entry_quarto.grid(row=linha, column=4, pady=5, padx=5)
+
+            self.entradas_checklist[id_mat] = (nome, qtd_esperada, entry_qtd, combo_obs, entry_quarto)
+            self.lista_entries.append(entry_qtd)
+
+        for index, entry in enumerate(self.lista_entries):
+            entry.bind("<Up>", lambda event, idx=index: self.mover_foco(event, -1, idx))
+            entry.bind("<Down>", lambda event, idx=index: self.mover_foco(event, 1, idx))
+
+        if self.lista_entries:
+            self.lista_entries[0].focus_set()
+
+    # 🟢 NÍVEL 3: MULTI-THREADING (Evita o congelamento da tela)
+    def iniciar_salvamento(self):
+        monitor_responsavel = self.combo_monitor_resp.get()
+        
+        # 1. Coleta os dados da interface na Thread principal (obrigatório do Tkinter)
+        itens_verificados = []
+        for id_mat, dados in self.entradas_checklist.items():
+            nome, qtd_esperada, entry, combo_obs, entry_quarto = dados
+            itens_verificados.append({
+                'nome': nome,
+                'esperado': qtd_esperada,
+                'encontrado_txt': entry.get(),
+                'obs': combo_obs.get() or "-",
+                'quarto': entry_quarto.get().strip() or "-"
+            })
+
+        # 2. Desativa o botão e muda o texto para o usuário saber que está processando
+        self.btn_salvar.config(state="disabled", text="Gerando Relatório e Gráficos... Aguarde!")
+
+        # 3. Cria a função que vai rodar em paralelo
+        def tarefa_paralela():
+            resultado = servico_checklist.processar_checklist(monitor_responsavel, itens_verificados)
+            # Ao terminar, chama a função de finalização de volta na Thread principal
+            self.after(0, lambda: self.finalizar_salvamento(resultado))
+
+        # 4. Dispara a Thread paralela
+        threading.Thread(target=tarefa_paralela, daemon=True).start()
+
+    def finalizar_salvamento(self, resultado):
+        if not resultado["sucesso"]:
+            messagebox.showerror("Erro", resultado["erro"], parent=self)
+            self.btn_salvar.config(state="normal", text="Salvar e Registrar Check-list") # Reativa o botão
+            return
+
+        try:
+            os.startfile(resultado["nome_imagem"])
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao abrir a imagem gerada: {e}", parent=self)
+
+        alertas = resultado["alertas"]
+        nome_arquivo = resultado["nome_arquivo_txt"]
+
+        if alertas:
+            mensagem_final = f"Check-list pronto '{nome_arquivo}' e gráfico gerado!\n\nAtenção aos Alertas:\n\n" + "\n".join(alertas)
+            messagebox.showwarning("Atenção!", mensagem_final, parent=self)
+        else:
+            messagebox.showinfo("Sucesso", f"Check-list perfeito! Nenhum item faltando.\nRelatório '{nome_arquivo}' e gráfico salvos com sucesso.", parent=self)
+
+        self.destroy()
 
 
+# =======================================================
+# CLASSE APP (A Janela Principal e Gerenciadora)
+# =======================================================
 
-tk.Label(janela_principal, text="MENU PRINCIPAL", font=("Arial", 18, "bold")).pack(pady=30)
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("📦 MATERIAIS BBR - LAZER")
+        
+        self.sistema = BancoDeDados()
+        
+        # 🟢 NÍVEL 3: PADRÃO SINGLETON 
+        # Dicionário para rastrear as janelas abertas e evitar duplicação
+        self.janelas_abertas = {}
 
-tk.Button(janela_principal, text="1. Gerenciar Monitores", command=abrir_janela_monitor, width=30, height=2).pack(pady=10)
-tk.Button(janela_principal, text="2. Gerenciar Materiais", command=abrir_janela_material, width=30, height=2).pack(pady=10)
-tk.Button(janela_principal, text="3. Registrar Entradas e Perdas", command=abrir_janela_movimentacoes, width=30, height=2, bg="#f0f0f0").pack(pady=10)
-tk.Button(janela_principal, text="4. Realizar Check-list Diário", command=abrir_janela_checklist, width=30, height=2).pack(pady=10)
-tk.Button(janela_principal, text="5. Gerar Relatório de Estoque", command=abrir_janela_relatorio, width=30, height=2, bg="#e6e6e6").pack(pady=10)
+        self._configurar_geometria()
+        self.protocol("WM_DELETE_WINDOW", self.fechar_sistema)
+        self._construir_menu()
 
-# O botão Sair agora chama o fechamento seguro em vez de um 'destroy' direto
-tk.Button(janela_principal, text="Sair do Sistema", command=fechar_sistema, bg="red", fg="white", width=20).pack(pady=40)
+    def _configurar_geometria(self):
+        largura_janela = 400
+        altura_janela = 500
+        largura_tela = self.winfo_screenwidth()
+        altura_tela = self.winfo_screenheight()
+        pos_x = (largura_tela // 2) - (largura_janela // 2)
+        pos_y = (altura_tela // 2) - (altura_janela // 2)
+        self.geometry(f"{largura_janela}x{altura_janela}+{pos_x}+{pos_y}")
 
-janela_principal.mainloop()
+    def _construir_menu(self):
+        tk.Label(self, text="MENU PRINCIPAL", font=("Arial", 18, "bold")).pack(pady=30)
+        tk.Button(self, text="1. Gerenciar Monitores", command=lambda: self.abrir_tela(JanelaMonitor, 'monitor'), width=30, height=2).pack(pady=10)
+        tk.Button(self, text="2. Gerenciar Materiais", command=lambda: self.abrir_tela(JanelaMaterial, 'material'), width=30, height=2).pack(pady=10)
+        tk.Button(self, text="3. Registrar Entradas e Perdas", command=lambda: self.abrir_tela(JanelaMovimentacoes, 'mov'), width=30, height=2, bg="#f0f0f0").pack(pady=10)
+        tk.Button(self, text="4. Realizar Check-list Diário", command=lambda: self.abrir_tela(JanelaChecklist, 'check'), width=30, height=2).pack(pady=10)
+        tk.Button(self, text="5. Gerar Relatório de Estoque", command=lambda: self.abrir_tela(JanelaRelatorio, 'relatorio'), width=30, height=2, bg="#e6e6e6").pack(pady=10)
+        tk.Button(self, text="Sair do Sistema", command=self.fechar_sistema, bg="red", fg="white", width=20).pack(pady=40)
+
+    # 🟢 Função Central de Controle de Janelas (Singleton)
+    def abrir_tela(self, ClasseDaJanela, chave_janela):
+        # Verifica se a janela já está na memória E se ela ainda existe na tela (não foi fechada)
+        if chave_janela in self.janelas_abertas and self.janelas_abertas[chave_janela].winfo_exists():
+            # Se já existir, puxa ela para a frente da tela
+            self.janelas_abertas[chave_janela].lift()
+        else:
+            # Se não existir, cria uma nova e salva no dicionário
+            self.janelas_abertas[chave_janela] = ClasseDaJanela(self, self.sistema)
+
+    def fechar_sistema(self):
+        try:
+            self.sistema.fechar_conexao()
+        except Exception:
+            pass 
+        self.destroy()
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
