@@ -1,9 +1,24 @@
 # Arquivo: relatorio.py
 import matplotlib
 matplotlib.use('Agg') 
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 import numpy as np
 import os
+
+def obter_area_de_trabalho():
+    home = os.path.expanduser("~")
+    # Testa os caminhos mais comuns no Windows com OneDrive e sistemas locais
+    caminhos = [
+        os.path.join(home, "OneDrive", "Área de Trabalho"),
+        os.path.join(home, "OneDrive", "Desktop"),
+        os.path.join(home, "Desktop"),
+        os.path.join(home, "Área de Trabalho")
+    ]
+    for caminho in caminhos:
+        if os.path.exists(caminho):
+            return caminho
+    return os.path.join(home, "Desktop") # Fallback padrão de segurança
 
 def criar_grafico(dados_grafico, monitor_responsavel, data_hora, caminho_txt):
     # Extração de dados e inversão ÚNICA para o gráfico (de cima para baixo)
@@ -12,8 +27,11 @@ def criar_grafico(dados_grafico, monitor_responsavel, data_hora, caminho_txt):
     encontrado = [d['encontrado'] for d in dados_grafico][::-1]
     anotacoes_grafico = [d['anotacao'] for d in dados_grafico][::-1]
 
-    # Criação única da figura para evitar Memory Leak
-    fig, ax = plt.subplots(figsize=(16, 16))
+    # ALTERAÇÃO CRÍTICA: Instanciação direta e isolada da figura sem usar plt.subplots()
+    fig = Figure(figsize=(16, 16))
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.add_subplot(111)
+    
     y = np.arange(len(materiais))
     altura = 0.35
 
@@ -44,10 +62,12 @@ def criar_grafico(dados_grafico, monitor_responsavel, data_hora, caminho_txt):
     
     # Margem extra para os textos não cortarem
     ax.margins(x=0.40)
-    plt.tight_layout()
+    
+    # ALTERAÇÃO: tight_layout() agora é chamado diretamente a partir do objeto da figura
+    fig.tight_layout()
 
     # Salvando na Área de Trabalho
-    caminho_desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    caminho_desktop = obter_area_de_trabalho()
     pasta_destino = os.path.join(caminho_desktop, "Graficos_Checklist")
     
     if not os.path.exists(pasta_destino):
@@ -57,8 +77,11 @@ def criar_grafico(dados_grafico, monitor_responsavel, data_hora, caminho_txt):
     nome_base = os.path.basename(caminho_txt).replace('.txt', '.png')
     nome_imagem = os.path.join(pasta_destino, nome_base)
     
-    plt.savefig(nome_imagem, dpi=300, bbox_inches='tight')
-    plt.close(fig) # Fecha a figura corretamente, liberando a RAM
+    # ALTERAÇÃO: Salvamento executado pelo método interno da própria figura
+    fig.savefig(nome_imagem, dpi=300, bbox_inches='tight')
+    
+    # NOTA: plt.close(fig) foi removido por ser desnecessário aqui, 
+    # já que a figura sairá da memória naturalmente ao fim da execução da função.
     
     print(f"Sucesso! Gráfico salvo na Área de Trabalho em: {nome_imagem}")
     

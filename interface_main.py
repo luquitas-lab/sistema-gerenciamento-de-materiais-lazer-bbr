@@ -3,12 +3,29 @@ from tkinter import messagebox
 from tkinter import ttk
 from datetime import datetime
 import os
-import threading # <-- NOVA IMPORTAÇÃO
+import sys
+import threading 
 import servico_checklist
 from backend_gerenciador import BancoDeDados
+import platform
+import subprocess
+
+def obter_area_de_trabalho():
+    home = os.path.expanduser("~")
+    # Testa os caminhos mais comuns no Windows com OneDrive e sistemas locais
+    caminhos = [
+        os.path.join(home, "OneDrive", "Área de Trabalho"),
+        os.path.join(home, "OneDrive", "Desktop"),
+        os.path.join(home, "Desktop"),
+        os.path.join(home, "Área de Trabalho")
+    ]
+    for caminho in caminhos:
+        if os.path.exists(caminho):
+            return caminho
+    return os.path.join(home, "Desktop") # Fallback padrão de segurança
 
 # =======================================================
-# JANELAS SECUNDÁRIAS (Monitores, Materiais, Movimentações e Relatórios continuam idênticas visualmente)
+# JANELAS SECUNDÁRIAS (Monitores, Materiais, Movimentações e Relatórios continuam idênticas visualmente)p
 # =======================================================
 
 class JanelaMonitor(tk.Toplevel):
@@ -18,7 +35,7 @@ class JanelaMonitor(tk.Toplevel):
         self.title("Gerenciar Monitores")
         self.geometry("400x350")
         self.transient(master)
-
+        self.grab_set()
         self.abas = ttk.Notebook(self)
         self.abas.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -75,7 +92,7 @@ class JanelaMonitor(tk.Toplevel):
             messagebox.showerror("Erro", f"Erro ao atualizar listas: {e}", parent=self)
 
     def salvar_monitor(self):
-        nome = self.entry_nome_mon.get()
+        nome = self.entry_nome_mon.get().strip()
         if nome == "":
             messagebox.showerror("Erro", "O nome é obrigatório!", parent=self)
             return
@@ -89,7 +106,7 @@ class JanelaMonitor(tk.Toplevel):
 
     def btn_atualizar_click(self):
         selecionado = self.combo_atualizar.get()
-        novo_nome = self.entry_novo_nome.get()
+        novo_nome = self.entry_novo_nome.get().strip()
         if not selecionado or novo_nome == "":
             messagebox.showerror("Erro", "Selecione um monitor e digite o novo nome!", parent=self)
             return
@@ -125,6 +142,7 @@ class JanelaMaterial(tk.Toplevel):
         self.title("Gerenciar Materiais")
         self.geometry("400x530") # Altura ajustada para caber o seletor
         self.transient(master)
+        self.grab_set()
 
         # Configura o seletor de monitor antes de desenhar as abas
         if not self._configurar_monitor_responsavel():
@@ -220,7 +238,7 @@ class JanelaMaterial(tk.Toplevel):
             messagebox.showerror("Erro", f"Erro ao atualizar listas: {e}", parent=self)
 
     def salvar_material(self):
-        nome = self.entry_nome.get()
+        nome = self.entry_nome.get().strip()
         quantidade_texto = self.entry_quantidade.get()
         observacoes = self.entry_obs.get()
         
@@ -238,7 +256,9 @@ class JanelaMaterial(tk.Toplevel):
             return
             
         try:
-            self.sistema.criar_material(nome, quantidade, observacoes)
+            monitor_selecionado = self.combo_monitor_resp.get()
+            id_monitor = int(monitor_selecionado.split(" - ")[0])
+            self.sistema.criar_material(nome, quantidade, observacoes, id_monitor=id_monitor)
             messagebox.showinfo("Sucesso", f"Material '{nome}' cadastrado!", parent=self)
             self.entry_nome.delete(0, tk.END)
             self.entry_quantidade.delete(0, tk.END)
@@ -249,7 +269,7 @@ class JanelaMaterial(tk.Toplevel):
 
     def btn_atualizar_mat_click(self):
         selecionado = self.combo_atualizar_mat.get()
-        novo_nome = self.entry_novo_nome_mat.get()
+        novo_nome = self.entry_novo_nome_mat.get().strip()
         nova_qtd_texto = self.entry_nova_qtd.get()
         novas_obs = self.entry_novas_obs.get()
         
@@ -289,12 +309,16 @@ class JanelaMaterial(tk.Toplevel):
         resposta = messagebox.askyesno("Confirmar Exclusão", f"Você tem certeza que deseja deletar o material:\n\n{selecionado}?", parent=self)
         if resposta:
             id_mat = int(selecionado.split(" - ")[0])
+            monitor_selecionado = self.combo_monitor_resp.get()
+            id_monitor = int(monitor_selecionado.split(" - ")[0])
             try:
-                self.sistema.deletar_material(id_mat)
+                self.sistema.deletar_material(id_mat, id_monitor=id_monitor)
                 messagebox.showinfo("Sucesso", "Material deletado do sistema!", parent=self)
                 self.atualizar_listas_mat()
             except Exception as e:
-                messagebox.showerror("Erro", f"Erro: {e}", parent=self)
+                messagebox.showerror("Erro", f"Erro ao apagar o material: {e}", parent=self)
+                
+
 
 class JanelaMovimentacoes(tk.Toplevel):
     def __init__(self, master, sistema):
@@ -303,6 +327,7 @@ class JanelaMovimentacoes(tk.Toplevel):
         self.title("Movimentações de Estoque")
         self.geometry("450x480") # Altura ajustada
         self.transient(master)
+        self.grab_set()
 
         # Configura o seletor de monitor antes de desenhar as abas
         if not self._configurar_monitor_responsavel():
@@ -321,6 +346,7 @@ class JanelaMovimentacoes(tk.Toplevel):
         self._construir_aba_dano()
         self.atualizar_combos_mov()
 
+    
     def _configurar_monitor_responsavel(self):
         try:
             monitores_db = self.sistema.listar_monitores()
@@ -401,6 +427,11 @@ class JanelaMovimentacoes(tk.Toplevel):
         except ValueError:
             messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=self)
             return
+        try:
+            datetime.strptime(data_texto, "%Y-%m-%d")
+        except ValueError:
+            messagebox.showerror("Erro", "Formato de data inválido. Use ANO-MÊS-DIA (Ex: 2024-12-25)", parent=self)
+            return
             
         id_mat = int(selecionado.split(" - ")[0])
         monitor_selecionado = self.combo_monitor_resp.get()
@@ -418,9 +449,13 @@ class JanelaMovimentacoes(tk.Toplevel):
     def confirmar_dano(self):
         selecionado = self.combo_mat_dano.get()
         qtd_texto = self.entry_qtd_dano.get()
-        data_texto = self.entry_data_dano.get()
-        if not selecionado or qtd_texto == "" or data_texto == "":
-            messagebox.showerror("Erro", "Todos os campos são obrigatórios!", parent=self)
+
+        id_mat = int(selecionado.split(" - ")[0])
+        materiais_db = self.sistema.listar_materiais()
+        material_atual = next((m for m in materiais_db if m[0] == id_mat), None)
+        
+        if material_atual and quantidade > material_atual[2]:
+            messagebox.showerror("Erro", f"Estoque insuficiente! Disponível: {material_atual[2]}", parent=self)
             return
         try:
             quantidade = int(qtd_texto)
@@ -429,6 +464,11 @@ class JanelaMovimentacoes(tk.Toplevel):
                 return
         except ValueError:
             messagebox.showerror("Erro", "A quantidade deve ser um número inteiro!", parent=self)
+            return
+        try:
+            datetime.strptime(data_texto, "%Y-%m-%d")
+        except ValueError:
+            messagebox.showerror("Erro", "Formato de data inválido. Use ANO-MÊS-DIA (Ex: 2024-12-25)", parent=self)
             return
             
         id_mat = int(selecionado.split(" - ")[0])
@@ -444,6 +484,29 @@ class JanelaMovimentacoes(tk.Toplevel):
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao registar dano: {e}", parent=self)
 
+class JanelaHistorico(tk.Toplevel):
+    def __init__(self, master, sistema):
+        super().__init__(master)
+        self.sistema = sistema
+        self.title("Histórico de Movimentações")
+        self.geometry("700x400")
+        self.grab_set()
+
+        colunas = ("ID", "Monitor", "Data", "Ação", "Detalhes")
+        self.tree = ttk.Treeview(self, columns=colunas, show="headings")
+        for col in colunas:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=100)
+        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.carregar_historico()
+
+    def carregar_historico(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        for log in self.sistema.listar_historico():
+            self.tree.insert("", "end", values=log)
+
 
 class JanelaRelatorio(tk.Toplevel):
     def __init__(self, master, sistema):
@@ -452,6 +515,7 @@ class JanelaRelatorio(tk.Toplevel):
         self.title("Gerar Relatório")
         self.geometry("300x200")
         self.transient(master)
+        self.grab_set()
 
         try:
             monitores_db = self.sistema.listar_monitores()
@@ -465,7 +529,7 @@ class JanelaRelatorio(tk.Toplevel):
             self.destroy()
             return
 
-        self.lista_monitores = [linha[1] for linha in monitores_db]
+        self.lista_monitores = [f"{linha[0]} - {linha[1]}" for linha in monitores_db]
 
         tk.Label(self, text="Quem está gerando este relatório?", font=("Arial", 11, "bold")).pack(pady=15)
         self.monitor_selecionado = tk.StringVar(self)
@@ -475,19 +539,25 @@ class JanelaRelatorio(tk.Toplevel):
         tk.Button(self, text="Gerar Relatório", command=self.confirmar_e_gerar, bg="blue", fg="white", font=("Arial", 10, "bold")).pack(pady=15)
 
     def confirmar_e_gerar(self):
-        nome_responsavel = self.monitor_selecionado.get()
+        monitor_selecionado = self.monitor_selecionado.get()
+        nome_responsavel = monitor_selecionado.split(" - ", 1)[1]
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
         nome_arquivo = f"Relatorio_Inventario_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.txt"
         
         # 🟢 NÍVEL 2: CAMINHOS ABSOLUTOS
-        diretorio_atual = os.path.dirname(os.path.abspath(__file__))
-        caminho_arquivo = os.path.join(diretorio_atual, nome_arquivo)
+        caminho_desktop = obter_area_de_trabalho()
+        pasta_relatorios = os.path.join(caminho_desktop, "Relatorios_TXT")
+
+        if not os.path.exists(pasta_relatorios):
+            os.makedirs(pasta_relatorios)
+
+        caminho_arquivo = os.path.join(pasta_relatorios, nome_arquivo)
         
         try:
             materiais = self.sistema.listar_materiais()
             with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
                 arquivo.write("=" * 70 + "\n")
-                arquivo.write("     RELATÓRIO OFICIAL DE INVENTÁRIO - LAZER\n")
+                arquivo.write("     RELATÓRIO OFICIAL DE INVENTÁRIO\n")
                 arquivo.write("=" * 70 + "\n")
                 arquivo.write(f"Documento gerado em: {agora}\n\n")
                 arquivo.write("--- POSIÇÃO ATUAL DO ESTOQUE ---\n\n")
@@ -498,7 +568,9 @@ class JanelaRelatorio(tk.Toplevel):
                     arquivo.write("-" * 70 + "\n")
                     for mat in materiais:
                         obs = mat[3] if mat[3] else "Nenhuma"
-                        arquivo.write(f"{mat[0]:<5} | {mat[1]:<25} | {mat[2]:<5} | {obs}\n")
+                        # Garante que nomes muito longos não quebrem a tabela
+                        nome_formatado = mat[1][:22] + "..." if len(mat[1]) > 25 else mat[1]
+                        arquivo.write(f"{mat[0]:<5} | {nome_formatado:<25} | {mat[2]:<5} | {obs}\n")
                 arquivo.write("\n" + "=" * 70 + "\n")
                 arquivo.write(f"Relatório gerado e conferido por: {nome_responsavel}\n")
                 arquivo.write("=" * 70 + "\n")
@@ -520,6 +592,8 @@ class JanelaChecklist(tk.Toplevel):
         self.title("Check-list Diário")
         self.geometry("1000x700")
         self.transient(master)
+        self.grab_set()
+        self.bind("<Destroy>", self._desativar_scroll)
 
         self.entradas_checklist = {}
         self.lista_entries = []
@@ -549,7 +623,7 @@ class JanelaChecklist(tk.Toplevel):
             self.destroy()
             return False
 
-        lista_monitores = [m[1] for m in monitores_db]
+        lista_monitores = [f"{m[0]} - {m[1]}" for m in monitores_db]
         frame_monitor = tk.Frame(self)
         frame_monitor.pack(pady=10)
         tk.Label(frame_monitor, text="Monitor Responsável:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
@@ -569,6 +643,9 @@ class JanelaChecklist(tk.Toplevel):
         tk.Label(self.frame_cabecalho, text="Encontrado", font=("Arial", 10, "bold"), width=12).grid(row=0, column=2, padx=5)
         tk.Label(self.frame_cabecalho, text="Observação", font=("Arial", 10, "bold"), width=15).grid(row=0, column=3, padx=5)
         tk.Label(self.frame_cabecalho, text="Quarto", font=("Arial", 10, "bold"), width=10).grid(row=0, column=4, padx=5)
+        tamanhos_colunas = [280, 90, 110, 130, 90]
+        for i, tamanho in enumerate(tamanhos_colunas):
+            self.frame_cabecalho.grid_columnconfigure(i, minsize=tamanho)
 
         # --- ÁREA SCROLLABLE ---
         self.frame_container = tk.Frame(self)
@@ -590,14 +667,14 @@ class JanelaChecklist(tk.Toplevel):
         self.frame_container.bind("<Leave>", self._desativar_scroll)
 
     def _ativar_scroll(self, event):
-        self.bind_all("<MouseWheel>", self.rolar_mouse)
-        self.bind_all("<Button-4>", self.rolar_mouse)
-        self.bind_all("<Button-5>", self.rolar_mouse)
+        self.bind("<MouseWheel>", self.rolar_mouse)
+        self.bind("<Button-4>", self.rolar_mouse)
+        self.bind("<Button-5>", self.rolar_mouse)
 
     def _desativar_scroll(self, event):
-        self.unbind_all("<MouseWheel>")
-        self.unbind_all("<Button-4>")
-        self.unbind_all("<Button-5>")
+        self.unbind("<MouseWheel>")
+        self.unbind("<Button-4>")
+        self.unbind("<Button-5>")
 
     def rolar_mouse(self, event):
         try:
@@ -623,7 +700,10 @@ class JanelaChecklist(tk.Toplevel):
         except Exception as e:
             messagebox.showerror("Erro", str(e), parent=self)
             return
-
+        tamanhos_colunas = [280, 90, 110, 130, 90]
+        for i, tamanho in enumerate(tamanhos_colunas):
+            self.frame_lista.grid_columnconfigure(i, minsize=tamanho)
+            
         if not materiais:
             tk.Label(self.frame_lista, text="Nenhum material cadastrado no sistema.", fg="red").grid(row=0, column=0)
             return
@@ -659,12 +739,14 @@ class JanelaChecklist(tk.Toplevel):
             self.lista_entries[0].focus_set()
 
     def iniciar_salvamento(self):
-        monitor_responsavel = self.combo_monitor_resp.get()
+        monitor_selecionado = self.combo_monitor_resp.get()
+        monitor_responsavel = monitor_selecionado.split(" - ", 1)[1]
         
         itens_verificados = []
         for id_mat, dados in self.entradas_checklist.items():
             nome, qtd_esperada, entry, combo_obs, entry_quarto = dados
             itens_verificados.append({
+                'id_mat': id_mat, # <-- ADICIONE ESTA LINHA AQUI
                 'nome': nome,
                 'esperado': qtd_esperada,
                 'encontrado_txt': entry.get(),
@@ -676,18 +758,41 @@ class JanelaChecklist(tk.Toplevel):
 
         def tarefa_paralela():
             resultado = servico_checklist.processar_checklist(monitor_responsavel, itens_verificados)
-            self.after(0, lambda: self.finalizar_salvamento(resultado))
+            if self.winfo_exists():
+                self.after(0, lambda: self.finalizar_salvamento(resultado))
 
         threading.Thread(target=tarefa_paralela, daemon=True).start()
 
     def finalizar_salvamento(self, resultado):
+        if not self.winfo_exists():
+            return
         if not resultado["sucesso"]:
             messagebox.showerror("Erro", resultado["erro"], parent=self)
             self.btn_salvar.config(state="normal", text="Salvar e Registrar Check-list") # Reativa o botão
             return
-
+        
+        monitor_selecionado = self.combo_monitor_resp.get()
+        id_monitor = int(monitor_selecionado.split(" - ")[0])
+        data_atual = datetime.now().strftime("%Y-%m-%d")
+        
         try:
-            os.startfile(resultado["nome_imagem"])
+            for acao in resultado.get("acoes_bd", []):
+                if acao['tipo'] == 'falta':
+                    self.sistema.criar_danos(data_atual, acao['qtd'], acao['id_mat'], id_monitor)
+                elif acao['tipo'] == 'sobra':
+                    self.sistema.criar_entrada(data_atual, acao['qtd'], acao['id_mat'], id_monitor)
+        except Exception as e:
+            messagebox.showerror("Erro de Banco", f"Relatório gerado, mas houve erro ao atualizar o estoque: {e}", parent=self)
+            self.btn_salvar.config(state="normal", text="Salvar e Registrar Check-list")
+            return
+        try:
+            sistema_os = platform.system()
+            if sistema_os == "Windows":
+                os.startfile(resultado["nome_imagem"])
+            elif sistema_os == "Darwin": # macOS
+                subprocess.Popen(["open", resultado["nome_imagem"]])
+            else: # Linux
+                subprocess.Popen(["xdg-open", resultado["nome_imagem"]])
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir a imagem gerada: {e}", parent=self)
 
@@ -709,13 +814,9 @@ class JanelaChecklist(tk.Toplevel):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("📦 MATERIAIS BBR - LAZER")
+        self.title("📦 MATERIAIS")
         
         self.sistema = BancoDeDados()
-        
-        # 🟢 NÍVEL 3: PADRÃO SINGLETON 
-        # Dicionário para rastrear as janelas abertas e evitar duplicação
-        self.janelas_abertas = {}
 
         self._configurar_geometria()
         self.protocol("WM_DELETE_WINDOW", self.fechar_sistema)
@@ -732,22 +833,17 @@ class App(tk.Tk):
 
     def _construir_menu(self):
         tk.Label(self, text="MENU PRINCIPAL", font=("Arial", 18, "bold")).pack(pady=30)
-        tk.Button(self, text="1. Gerenciar Monitores", command=lambda: self.abrir_tela(JanelaMonitor, 'monitor'), width=30, height=2).pack(pady=10)
-        tk.Button(self, text="2. Gerenciar Materiais", command=lambda: self.abrir_tela(JanelaMaterial, 'material'), width=30, height=2).pack(pady=10)
-        tk.Button(self, text="3. Registrar Entradas e Perdas", command=lambda: self.abrir_tela(JanelaMovimentacoes, 'mov'), width=30, height=2, bg="#f0f0f0").pack(pady=10)
-        tk.Button(self, text="4. Realizar Check-list Diário", command=lambda: self.abrir_tela(JanelaChecklist, 'check'), width=30, height=2).pack(pady=10)
-        tk.Button(self, text="5. Gerar Relatório de Estoque", command=lambda: self.abrir_tela(JanelaRelatorio, 'relatorio'), width=30, height=2, bg="#e6e6e6").pack(pady=10)
+        tk.Button(self, text="1. Gerenciar Monitores", command=lambda: self.abrir_tela(JanelaMonitor), width=30, height=2).pack(pady=10)
+        tk.Button(self, text="2. Gerenciar Materiais", command=lambda: self.abrir_tela(JanelaMaterial), width=30, height=2).pack(pady=10)
+        tk.Button(self, text="3. Registrar Entradas e Perdas", command=lambda: self.abrir_tela(JanelaMovimentacoes), width=30, height=2, bg="#f0f0f0").pack(pady=10)
+        tk.Button(self, text="4. Realizar Check-list Diário", command=lambda: self.abrir_tela(JanelaChecklist), width=30, height=2).pack(pady=10)
+        tk.Button(self, text="5. Gerar Relatório de Estoque", command=lambda: self.abrir_tela(JanelaRelatorio), width=30, height=2, bg="#e6e6e6").pack(pady=10)
+        tk.Button(self, text="6. Ver Histórico de Ações", command=lambda: self.abrir_tela(JanelaHistorico), width=30, height=2).pack(pady=10)
         tk.Button(self, text="Sair do Sistema", command=self.fechar_sistema, bg="red", fg="white", width=20).pack(pady=40)
 
     # 🟢 Função Central de Controle de Janelas (Singleton)
-    def abrir_tela(self, ClasseDaJanela, chave_janela):
-        # Verifica se a janela já está na memória E se ela ainda existe na tela (não foi fechada)
-        if chave_janela in self.janelas_abertas and self.janelas_abertas[chave_janela].winfo_exists():
-            # Se já existir, puxa ela para a frente da tela
-            self.janelas_abertas[chave_janela].lift()
-        else:
-            # Se não existir, cria uma nova e salva no dicionário
-            self.janelas_abertas[chave_janela] = ClasseDaJanela(self, self.sistema)
+    def abrir_tela(self, ClasseDaJanela):
+        ClasseDaJanela(self, self.sistema)
 
     def fechar_sistema(self):
         try:
