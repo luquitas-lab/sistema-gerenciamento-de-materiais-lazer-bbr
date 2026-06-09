@@ -16,9 +16,8 @@ Funcionalidades
 - Histórico e Auditoria: Log detalhado de todas as ações realizadas no sistema, vinculadas ao monitor responsável.
 
 Tecnologias e Bibliotecas Utilizadas
-
-Linguagem: Python 3
 ```
+Linguagem: Python 3
 Interface Gráfica (GUI):`tkinter` e `ttk` 
 Banco de Dados: `sqlite3` 
 Geração de Gráficos: `matplotlib` e `numpy`
