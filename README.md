@@ -26,19 +26,23 @@ Concorrência: `threading`
 Estrutura do Projeto
 
 
+```
 sistema-gerenciamento-de-materiais/
 ├── main.py
 ├── backend_gerenciador.py
 ├── servico_checklist.py
-├── relatorio.py 
+├── relatorio.py
+├── README.md
+├── requirements.txt
+├── .gitignore
 └── telas/
-│   ├── __init__.py 
-│   ├── janela_monitor.py
-│   ├── janela_material.py
-│   ├── janela_movimentacoes.py
-│   ├── janela_checklist.py  
-│   ├── janela_checklist.py
-│   └── janela_historico_relatorio.py
+    ├── __init__.py
+    ├── janela_monitor.py
+    ├── janela_material.py
+    ├── janela_movimentacoes.py
+    ├── janela_checklist.py
+    └── janela_historico_relatorio.py
+```
 
 
 
