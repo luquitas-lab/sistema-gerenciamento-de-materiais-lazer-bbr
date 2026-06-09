@@ -18,10 +18,12 @@ Funcionalidades
 Tecnologias e Bibliotecas Utilizadas
 
 Linguagem: Python 3
+```
 Interface Gráfica (GUI):`tkinter` e `ttk` 
 Banco de Dados: `sqlite3` 
 Geração de Gráficos: `matplotlib` e `numpy`
-Concorrência: `threading` 
+Concorrência: `threading`
+```
 
 Estrutura do Projeto
 
@@ -46,7 +48,7 @@ sistema-gerenciamento-de-materiais/
 
 
 
- ** Nota Importante sobre o Check-list:**
+  **Nota Importante sobre o Check-list:**
 - A funcionalidade de **Check-list Diário** atua estritamente como uma ferramenta de **auditoria e conferência visual**. O seu propósito é comparar o estoque esperado com o físico, gerando alertas, relatórios documentados (`.txt`) e gráficos comparativos (`.png`). **A execução do check-list não deve ser interpretada como uma movimentação oficial**, servindo apenas para apontar divergências para o gestor.
 
  Onde os relatórios são salvos?
