@@ -1,7 +1,22 @@
 
 import os
+import sys
 from datetime import datetime
 import relatorio
+
+def obter_area_de_trabalho():
+    home = os.path.expanduser("~")
+    # Testa os caminhos mais comuns no Windows com OneDrive e sistemas locais
+    caminhos = [
+        os.path.join(home, "OneDrive", "Área de Trabalho"),
+        os.path.join(home, "OneDrive", "Desktop"),
+        os.path.join(home, "Desktop"),
+        os.path.join(home, "Área de Trabalho")
+    ]
+    for caminho in caminhos:
+        if os.path.exists(caminho):
+            return caminho
+    return os.path.join(home, "Desktop") # Fallback padrão de segurança
 
 def processar_checklist(monitor_responsavel, itens_verificados):
     """
@@ -14,11 +29,13 @@ def processar_checklist(monitor_responsavel, itens_verificados):
     alertas = []
     detalhes_relatorio = []
     
-    # NOVA LISTA: Guardará os dados estruturados para o gráfico
+    
     dados_grafico = [] 
+    acoes_bd = []
 
     # 1. VALIDAÇÃO E LÓGICA DE NEGÓCIO (MATEMÁTICA)
     for item in itens_verificados:
+        id_mat = item['id_mat']
         nome = item['nome']
         qtd_esperada = item['esperado']
         qtd_texto = item['encontrado_txt']
@@ -34,17 +51,20 @@ def processar_checklist(monitor_responsavel, itens_verificados):
         except ValueError:
             return {"sucesso": False, "erro": f"A quantidade de '{nome}' deve ser um número inteiro!"}
 
+        if qtd_encontrada < 0: 
+            return {"sucesso": False, "erro": "A quantidade não pode ser negativa!"}
+
         status_txt = "OK"
         info_extra = []
         texto_anotacao = "" # Texto que vai aparecer na ponta da barra no gráfico
         
+        nome_formatado = nome[:32] + "..." if len(nome) > 35 else nome
         # Preparação das anotações
         if obs_texto != "-":
             info_extra.append(f"Obs: {obs_texto}")
             
             obs_lower = obs_texto.lower()
             if obs_lower in ['pendente', 'danificado']:
-                nome_formatado = obs_lower.capitalize()
                 if quarto_texto and quarto_texto != '-':
                     texto_anotacao = f"   [{nome_formatado} no Qto: {quarto_texto}]"
                 else:
@@ -60,15 +80,17 @@ def processar_checklist(monitor_responsavel, itens_verificados):
             diferenca = qtd_esperada - qtd_encontrada
             alertas.append(f"⚠️ Faltam {diferenca}x '{nome}'{aviso_extra} (Anotado no relatório)")
             status_txt = f"FALTAM {diferenca}"
+            acoes_bd.append({'tipo': 'falta', 'qtd': diferenca, 'id_mat': id_mat}) 
 
         elif qtd_encontrada > qtd_esperada:
             sobra = qtd_encontrada - qtd_esperada
             alertas.append(f"❓ Sobram {sobra}x '{nome}'{aviso_extra} (Anotado no relatório)")
             status_txt = f"SOBRAM {sobra}"
+            acoes_bd.append({'tipo': 'sobra', 'qtd': sobra, 'id_mat': id_mat}) 
 
         # Guarda a linha formatada para o TXT
         detalhes_relatorio.append(
-            f"{nome:<35} | {qtd_esperada:<9} | {qtd_encontrada:<10} | {status_txt:<15} | {obs_texto:<12} | {quarto_texto}"
+            f"{nome_formatado:<35} | {qtd_esperada:<9} | {qtd_encontrada:<10} | {status_txt:<15} | {obs_texto:<12} | {quarto_texto}"
         )
         
         # Guarda os dados limpos para o Gráfico
@@ -80,8 +102,8 @@ def processar_checklist(monitor_responsavel, itens_verificados):
         })
 
     # 2. GERAÇÃO DO ARQUIVO TXT
-    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
-    pasta_textos = os.path.join(diretorio_atual, "Relatorios_TXT")
+    caminho_desktop = obter_area_de_trabalho()
+    pasta_textos = os.path.join(caminho_desktop, "Relatorios_TXT")
     
     if not os.path.exists(pasta_textos):
         os.makedirs(pasta_textos)
@@ -131,5 +153,6 @@ def processar_checklist(monitor_responsavel, itens_verificados):
         "sucesso": True,
         "alertas": alertas,
         "nome_arquivo_txt": nome_arquivo_txt,
-        "nome_imagem": nome_imagem
+        "nome_imagem": nome_imagem,
+        "acoes_bd": acoes_bd  
     }

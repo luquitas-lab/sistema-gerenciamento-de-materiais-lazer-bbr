@@ -3,10 +3,18 @@ from datetime import datetime
 from contextlib import contextmanager
 import os
 from typing import Optional
+import sys
 
 class BancoDeDados:
     def __init__(self, nome_banco: str = 'materiais.db'):
-        diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+        if getattr(sys, 'frozen', False):
+            pasta_documentos = os.path.join(os.path.expanduser("~"), "Documents", "Sistema_Materiais")
+            if not os.path.exists(pasta_documentos):
+                os.makedirs(pasta_documentos)
+            diretorio_atual = pasta_documentos
+        else:
+            diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+            
         self.nome_banco = os.path.join(diretorio_atual, nome_banco)
         self._inicializar_esquema()
 
@@ -31,101 +39,101 @@ class BancoDeDados:
         pass
 
     def _inicializar_esquema(self) -> None:
-            try:
-                with self._conectar() as conn:
-                    with conn: # Gerencia o Commit/Rollback da transação
-                        
-                        conn.execute('''
-                        CREATE TABLE IF NOT EXISTS monitor (
-                            id_monitor INTEGER PRIMARY KEY AUTOINCREMENT, 
-                            nome TEXT NOT NULL,
-                            ativo INTEGER DEFAULT 1
-                        )
-                        ''')
+        try:
+            with self._conectar() as conn:
+                with conn: # Gerencia o Commit/Rollback da transação
+                    
+                    conn.execute('''
+                    CREATE TABLE IF NOT EXISTS monitor (
+                        id_monitor INTEGER PRIMARY KEY AUTOINCREMENT, 
+                        nome TEXT NOT NULL,
+                        ativo INTEGER DEFAULT 1
+                    )
+                    ''')
 
-                        conn.execute('''
-                        CREATE TABLE IF NOT EXISTS material (
-                            id_material INTEGER PRIMARY KEY AUTOINCREMENT,
-                            nome TEXT NOT NULL,
-                            quantidade_material INT,
-                            observacoes TEXT,
-                            ativo INTEGER DEFAULT 1
-                        )    
-                        ''')
+                    conn.execute('''
+                    CREATE TABLE IF NOT EXISTS material (
+                        id_material INTEGER PRIMARY KEY AUTOINCREMENT,
+                        nome TEXT NOT NULL,
+                        quantidade_material INT,
+                        observacoes TEXT,
+                        ativo INTEGER DEFAULT 1
+                    )    
+                    ''')
 
-                        # Tenta adicionar a coluna caso o banco já exista com a versão antiga
-                        try:
-                            conn.execute("ALTER TABLE monitor ADD COLUMN ativo INTEGER DEFAULT 1")
-                        except sqlite3.OperationalError:
-                            pass # A coluna já existe
+                    # Tenta adicionar a coluna caso o banco já exista com a versão antiga
+                    try:
+                        conn.execute("ALTER TABLE monitor ADD COLUMN ativo INTEGER DEFAULT 1")
+                    except sqlite3.OperationalError:
+                        pass # A coluna já existe
 
-                        try:
-                            conn.execute("ALTER TABLE material ADD COLUMN ativo INTEGER DEFAULT 1")
-                        except sqlite3.OperationalError:
-                            pass # A coluna já existe
+                    try:
+                        conn.execute("ALTER TABLE material ADD COLUMN ativo INTEGER DEFAULT 1")
+                    except sqlite3.OperationalError:
+                        pass # A coluna já existe
 
-                        conn.execute('''
-                        CREATE TABLE IF NOT EXISTS entrada (
-                            id_entrada INTEGER PRIMARY KEY AUTOINCREMENT,
-                            entrada DATE,
-                            quantidade_entrada INT,
-                            id_material INT,
-                            FOREIGN KEY (id_material) REFERENCES material(id_material)
-                        )
-                        ''')
+                    conn.execute('''
+                    CREATE TABLE IF NOT EXISTS entrada (
+                        id_entrada INTEGER PRIMARY KEY AUTOINCREMENT,
+                        entrada DATE,
+                        quantidade_entrada INT,
+                        id_material INT,
+                        FOREIGN KEY (id_material) REFERENCES material(id_material)
+                    )
+                    ''')
 
-                        conn.execute('''
-                        CREATE TABLE IF NOT EXISTS danos (
-                            id_danos INTEGER PRIMARY KEY AUTOINCREMENT,
-                            data_danos DATE,
-                            quantidade_danos INT,
-                            id_material INT,
-                            FOREIGN KEY (id_material) REFERENCES material(id_material)
-                        )
-                        ''')
+                    conn.execute('''
+                    CREATE TABLE IF NOT EXISTS danos (
+                        id_danos INTEGER PRIMARY KEY AUTOINCREMENT,
+                        data_danos DATE,
+                        quantidade_danos INT,
+                        id_material INT,
+                        FOREIGN KEY (id_material) REFERENCES material(id_material)
+                    )
+                    ''')
 
-                        conn.execute('''
-                        CREATE TABLE IF NOT EXISTS historico_movimentacoes (
-                            id_log INTEGER PRIMARY KEY AUTOINCREMENT,
-                            id_monitor INTEGER,
-                            data_hora DATETIME,
-                            acao TEXT NOT NULL,
-                            detalhes TEXT,
-                            FOREIGN KEY (id_monitor) REFERENCES monitor(id_monitor)
-                        )
-                        ''')
+                    conn.execute('''
+                    CREATE TABLE IF NOT EXISTS historico_movimentacoes (
+                        id_log INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id_monitor INTEGER,
+                        data_hora DATETIME,
+                        acao TEXT NOT NULL,
+                        detalhes TEXT,
+                        FOREIGN KEY (id_monitor) REFERENCES monitor(id_monitor)
+                    )
+                    ''')
 
-                        # Triggers mantidos sem alteração
-                        conn.execute('''
-                        CREATE TRIGGER IF NOT EXISTS atualiza_material_entrada
-                        AFTER INSERT ON entrada BEGIN
-                            UPDATE material SET quantidade_material = quantidade_material + NEW.quantidade_entrada WHERE id_material = NEW.id_material;
-                        END;
-                        ''')
+                    # Triggers mantidos sem alteração
+                    conn.execute('''
+                    CREATE TRIGGER IF NOT EXISTS atualiza_material_entrada
+                    AFTER INSERT ON entrada BEGIN
+                        UPDATE material SET quantidade_material = quantidade_material + NEW.quantidade_entrada WHERE id_material = NEW.id_material;
+                    END;
+                    ''')
 
-                        conn.execute('''
-                        CREATE TRIGGER IF NOT EXISTS atualiza_material_danos
-                        AFTER INSERT ON danos BEGIN
-                            UPDATE material SET quantidade_material = quantidade_material - NEW.quantidade_danos WHERE id_material = NEW.id_material;
-                        END;
-                        ''')
+                    conn.execute('''
+                    CREATE TRIGGER IF NOT EXISTS atualiza_material_danos
+                    AFTER INSERT ON danos BEGIN
+                        UPDATE material SET quantidade_material = quantidade_material - NEW.quantidade_danos WHERE id_material = NEW.id_material;
+                    END;
+                    ''')
 
-                        conn.execute('''
-                        CREATE TRIGGER IF NOT EXISTS devolve_material_danos
-                        AFTER DELETE ON danos BEGIN
-                            UPDATE material SET quantidade_material = quantidade_material + OLD.quantidade_danos WHERE id_material = OLD.id_material;
-                        END;
-                        ''')
+                    conn.execute('''
+                    CREATE TRIGGER IF NOT EXISTS devolve_material_danos
+                    AFTER DELETE ON danos BEGIN
+                        UPDATE material SET quantidade_material = quantidade_material + OLD.quantidade_danos WHERE id_material = OLD.id_material;
+                    END;
+                    ''')
 
-                        conn.execute('''
-                        CREATE TRIGGER IF NOT EXISTS reverte_material_entrada
-                        AFTER DELETE ON entrada BEGIN                                           
-                            UPDATE material SET quantidade_material = quantidade_material - OLD.quantidade_entrada WHERE id_material = OLD.id_material;
-                        END;
-                        ''')
+                    conn.execute('''
+                    CREATE TRIGGER IF NOT EXISTS reverte_material_entrada
+                    AFTER DELETE ON entrada BEGIN                                           
+                        UPDATE material SET quantidade_material = quantidade_material - OLD.quantidade_entrada WHERE id_material = OLD.id_material;
+                    END;
+                    ''')
 
-            except sqlite3.Error as e:
-                raise Exception(f"Erro ao criar esquema do banco: {e}")
+        except sqlite3.Error as e:
+            raise Exception(f"Erro ao criar esquema do banco: {e}")
 
     # =================================================================
     # FUNÇÃO INTERNA DE LOG
@@ -152,11 +160,14 @@ class BancoDeDados:
         except sqlite3.Error as e:
             raise Exception(f"Erro ao criar monitor: {e}")
 
-    def criar_material(self, nome: str, quantidade_material: int, observacoes: str = "") -> bool:
+    def criar_material(self, nome: str, quantidade_material: int, observacoes: str = "", id_monitor: int = None) -> bool:
         try:
             with self._conectar() as conn:
                 with conn:
-                    conn.execute("INSERT INTO material (nome, quantidade_material, observacoes) VALUES (?, ?, ?)", (nome, quantidade_material, observacoes))
+                    cursor = conn.execute("INSERT INTO material (nome, quantidade_material, observacoes) VALUES (?, ?, ?)", (nome, quantidade_material, observacoes))
+                    if id_monitor:
+                        id_criado = cursor.lastrowid
+                        self._registrar_log(conn, id_monitor, "CRIACAO_MATERIAL", f"Material '{nome}' (ID: {id_criado}) criado com {quantidade_material} unidades.")
             return True
         except sqlite3.Error as e:
             raise Exception(f"Erro ao criar material: {e}")
@@ -266,12 +277,13 @@ class BancoDeDados:
         except sqlite3.Error as e:
             raise Exception(f"Erro ao deletar monitor: {e}")
 
-    def deletar_material(self, id_material: int) -> bool:
+    def deletar_material(self, id_material: int, id_monitor: int = None) -> bool:
         try:
             with self._conectar() as conn:
                 with conn:
-                    # Soft Delete: apenas desativa
                     conn.execute("UPDATE material SET ativo = 0 WHERE id_material = ?", (id_material,))
+                    if id_monitor:
+                        self._registrar_log(conn, id_monitor, "MATERIAL_ELIMINADO", f"Material ID {id_material} foi desativado do sistema.")
             return True
         except sqlite3.Error as e:
             raise Exception(f"Erro ao deletar material: {e}")
