@@ -25,21 +25,22 @@ Concorrência: `threading`
 
 Estrutura do Projeto
 
-   sistema-gerenciamento-de-materiais/
-├── main.py                           # Ponto de entrada do sistema (Class App)
-├── backend_gerenciador.py            # Conexão e CRUD com o banco de dados (SQLite)
-├── servico_checklist.py              # Lógica de negócio, matemática e geração de TXT
-├── relatorio.py                      # Lógica de renderização do gráfico (Matplotlib)
-├── README.md                         # Documentação principal do projeto
-├── requirements.txt                  # Lista de bibliotecas externas
-│
-└── 📂 telas/                         # (Frontend Tkinter)
-    ├── __init__.py                  
-    ├── janela_monitor.py             # Tela (CRUD) de Monitores
-    ├── janela_material.py            # Tela (CRUD) de Materiais
-    ├── janela_movimentacoes.py       # Tela de Entradas e Danos/Perdas
-    ├── janela_checklist.py           # Tela da Tabela de Auditoria Diária
-    └── janela_historico_relatorio.py # Telas de exibição de Logs e emissão de TXT
+
+sistema-gerenciamento-de-materiais/
+├── main.py
+├── backend_gerenciador.py
+├── servico_checklist.py
+├── relatorio.py 
+└── telas/
+│   ├── __init__.py 
+│   ├── janela_monitor.py
+│   ├── janela_material.py
+│   ├── janela_movimentacoes.py
+│   ├── janela_checklist.py  
+│   ├── janela_checklist.py
+│   └── janela_historico_relatorio.py
+
+
 
  ** Nota Importante sobre o Check-list:**
 - A funcionalidade de **Check-list Diário** atua estritamente como uma ferramenta de **auditoria e conferência visual**. O seu propósito é comparar o estoque esperado com o físico, gerando alertas, relatórios documentados (`.txt`) e gráficos comparativos (`.png`). **A execução do check-list não deve ser interpretada como uma movimentação oficial**, servindo apenas para apontar divergências para o gestor.
