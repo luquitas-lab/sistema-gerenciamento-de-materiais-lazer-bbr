@@ -32,6 +32,10 @@ A arquitetura foi dividida para separar a lógica de negócios, banco de dados e
 - `servico_checklist.py`: Lógica de negócios e validação matemática para o processamento do check-list e geração de alertas/arquivos de texto.
 - `relatorio.py`: Módulo focado na renderização do gráfico de barras horizontal comparando o estoque "Esperado" vs "Encontrado".
 
+
+ ** Nota Importante sobre o Check-list:**
+- A funcionalidade de **Check-list Diário** atua estritamente como uma ferramenta de **auditoria e conferência visual**. O seu propósito é comparar o estoque esperado com o físico, gerando alertas, relatórios documentados (`.txt`) e gráficos comparativos (`.png`). **A execução do check-list não deve ser interpretada como uma movimentação oficial**, servindo apenas para apontar divergências para o gestor.
+
  Onde os relatórios são salvos?
  
 O sistema foi feito pensado em um público com o minimo de conhecimento em informática, então foi feito de forma inteligente para localizar o desktop automaticamente (seja no Windows, Mac ou Linux). 
