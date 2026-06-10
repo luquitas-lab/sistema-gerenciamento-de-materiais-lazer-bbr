@@ -28,7 +28,8 @@ def criar_grafico(dados_grafico, monitor_responsavel, data_hora, caminho_txt):
     anotacoes_grafico = [d['anotacao'] for d in dados_grafico][::-1]
 
     # ALTERAÇÃO CRÍTICA: Instanciação direta e isolada da figura sem usar plt.subplots()
-    fig = Figure(figsize=(16, 16))
+    altura_dinamica = max(10.0, len(materiais) * 0.6)
+    fig = Figure(figsize=(16, altura_dinamica))
     canvas = FigureCanvasAgg(fig)
     ax = fig.add_subplot(111)
     
@@ -63,8 +64,7 @@ def criar_grafico(dados_grafico, monitor_responsavel, data_hora, caminho_txt):
     # Margem extra para os textos não cortarem
     ax.margins(x=0.40)
     
-    # ALTERAÇÃO: tight_layout() agora é chamado diretamente a partir do objeto da figura
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     # Salvando na Área de Trabalho
     caminho_desktop = obter_area_de_trabalho()

@@ -249,17 +249,17 @@ class BancoDeDados:
         except sqlite3.Error as e:
             raise Exception(f"Erro ao atualizar monitor: {e}")
 
-    def atualizar_material(self, id_material: int, nome: str, quantidade: int, observacoes: str, id_monitor: int = None) -> bool:
+    def atualizar_material(self, id_material: int, nome: str, observacoes: str, id_monitor: int = None) -> bool:
         try:
             with self._conectar() as conn:
                 with conn:
                     conn.execute('''
                         UPDATE material 
-                        SET nome = ?, quantidade_material = ?, observacoes = ? 
+                        SET nome = ?, observacoes = ? 
                         WHERE id_material = ?
-                    ''', (nome, quantidade, observacoes, id_material))
+                    ''', (nome, observacoes, id_material))
                     
-                    self._registrar_log(conn, id_monitor, "ATUALIZACAO_MANUAL", f"Material ID {id_material} alterado para: {nome}, Qtd: {quantidade}")
+                    self._registrar_log(conn, id_monitor, "ATUALIZACAO_MANUAL", f"Material ID {id_material} alterado para: {nome}")
             return True
         except sqlite3.Error as e:
             raise Exception(f"Erro ao atualizar material: {e}")

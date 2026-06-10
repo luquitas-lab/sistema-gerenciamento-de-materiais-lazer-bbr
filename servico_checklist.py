@@ -59,6 +59,9 @@ def processar_checklist(monitor_responsavel, itens_verificados):
         texto_anotacao = "" # Texto que vai aparecer na ponta da barra no gráfico
         
         nome_formatado = nome[:32] + "..." if len(nome) > 35 else nome
+        
+        obs_lower = obs_texto.lower() if obs_texto != "-" else ""
+
         # Preparação das anotações
         if obs_texto != "-":
             info_extra.append(f"Obs: {obs_texto}")
@@ -87,6 +90,11 @@ def processar_checklist(monitor_responsavel, itens_verificados):
             alertas.append(f"❓ Sobram {sobra}x '{nome}'{aviso_extra} (Anotado no relatório)")
             status_txt = f"SOBRAM {sobra}"
             acoes_bd.append({'tipo': 'sobra', 'qtd': sobra, 'id_mat': id_mat}) 
+            
+        # --- CORREÇÃO: Captura itens danificados mesmo quando a contagem bate ---
+        elif obs_lower in ['pendente', 'danificado']:
+            alertas.append(f"⚠️ Atenção: '{nome}' tem a quantidade certa, mas foi marcado como '{obs_texto}'{aviso_extra}")
+            status_txt = f"ATENÇÃO: {obs_texto.upper()}"
 
         # Guarda a linha formatada para o TXT
         detalhes_relatorio.append(
