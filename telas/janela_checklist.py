@@ -16,8 +16,6 @@ class JanelaChecklist(tk.Toplevel):
         self.geometry("1000x700")
         self.transient(master)
         self.grab_set()
-        self.bind("<Destroy>", self._desativar_scroll)
-
         self.entradas_checklist = {}
         self.lista_entries = []
 
@@ -85,21 +83,31 @@ class JanelaChecklist(tk.Toplevel):
         self.canvas.create_window((0, 0), window=self.frame_lista, anchor="nw")
         self.frame_lista.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
+        self.mouse_no_canvas = False
         # Manutenção do isolamento de evento do scroll
-        self.frame_container.bind("<Enter>", self._ativar_scroll)
-        self.frame_container.bind("<Leave>", self._desativar_scroll)
+        self.frame_container.bind("<Enter>", self._mouse_entrou)
+        self.frame_container.bind("<Leave>", self._mouse_saiu)
 
-    def _ativar_scroll(self, event):
         self.bind("<MouseWheel>", self.rolar_mouse)
         self.bind("<Button-4>", self.rolar_mouse)
         self.bind("<Button-5>", self.rolar_mouse)
 
-    def _desativar_scroll(self, event):
-        self.unbind("<MouseWheel>")
-        self.unbind("<Button-4>")
-        self.unbind("<Button-5>")
+    def _mouse_entrou(self, event):
+        self.mouse_no_canvas = True
+
+    def _mouse_saiu(self, event):
+        self.mouse_no_canvas = False
 
     def rolar_mouse(self, event):
+        # 1ª Trava: Cancela a rolagem se o mouse estiver fora do container
+        if not getattr(self, 'mouse_no_canvas', False):
+            return
+            
+        # 2ª Trava: Cancela a rolagem da tela se o cursor estiver sobre um Combobox 
+        if isinstance(event.widget, ttk.Combobox):
+            return
+
+        # Executa a rolagem normalmente
         try:
             if getattr(event, 'delta', 0) != 0:
                 direcao = int(-1 * (event.delta / abs(event.delta)))
@@ -116,6 +124,11 @@ class JanelaChecklist(tk.Toplevel):
         novo_index = index + direcao
         if 0 <= novo_index < len(self.lista_entries):
             self.lista_entries[novo_index].focus_set()
+            
+            # --- CORREÇÃO: Faz a tela rolar automaticamente acompanhando o cursor ---
+            fracao_rolagem = novo_index / len(self.lista_entries)
+            self.canvas.yview_moveto(fracao_rolagem)    
+        return "break"
 
     def _carregar_materiais(self):
         try:
@@ -162,6 +175,9 @@ class JanelaChecklist(tk.Toplevel):
             self.lista_entries[0].focus_set()
 
     def iniciar_salvamento(self):
+        if not self.entradas_checklist:
+            messagebox.showwarning("Aviso", "Não há materiais para verificar no check-list!", parent=self)
+            return
         monitor_selecionado = self.combo_monitor_resp.get()
         monitor_responsavel = monitor_selecionado.split(" - ", 1)[1]
         
@@ -180,9 +196,15 @@ class JanelaChecklist(tk.Toplevel):
         self.btn_salvar.config(state="disabled", text="Gerando Relatório e Gráficos... Aguarde!")
 
         def tarefa_paralela():
-            resultado = servico_checklist.processar_checklist(monitor_responsavel, itens_verificados)
-            if self.winfo_exists():
-                self.after(0, lambda: self.finalizar_salvamento(resultado))
+            try:
+                resultado = servico_checklist.processar_checklist(monitor_responsavel, itens_verificados)
+                if self.winfo_exists():
+                    self.after(0, lambda: self.finalizar_salvamento(resultado))
+            except Exception as e:
+                # Se falhar catastroficamente, avisa o usuário e reativa a interface
+                if self.winfo_exists():
+                    self.after(0, lambda err=e: messagebox.showerror("Erro Crítico", f"Falha ao processar o checklist: {err}", parent=self))
+                    self.after(0, lambda: self.btn_salvar.config(state="normal", text="Salvar e Registrar Check-list"))
 
         threading.Thread(target=tarefa_paralela, daemon=True).start()
 
@@ -193,10 +215,6 @@ class JanelaChecklist(tk.Toplevel):
             messagebox.showerror("Erro", resultado["erro"], parent=self)
             self.btn_salvar.config(state="normal", text="Salvar e Registrar Check-list") # Reativa o botão
             return
-        
-        monitor_selecionado = self.combo_monitor_resp.get()
-        id_monitor = int(monitor_selecionado.split(" - ")[0])
-        data_atual = datetime.now().strftime("%Y-%m-%d")
         
         try:
             sistema_os = platform.system()

@@ -37,6 +37,7 @@ class JanelaMonitor(tk.Toplevel):
         tk.Label(self.aba_atualizar, text="Selecione o Monitor antigo:").pack()
         self.combo_atualizar = ttk.Combobox(self.aba_atualizar, state="readonly", width=27)
         self.combo_atualizar.pack(pady=5)
+        self.combo_atualizar.bind("<<ComboboxSelected>>", self.preencher_dados_atuais)
         tk.Label(self.aba_atualizar, text="Digite o Novo Nome:").pack()
         self.entry_novo_nome = tk.Entry(self.aba_atualizar, width=30)
         self.entry_novo_nome.pack(pady=5)
@@ -49,18 +50,32 @@ class JanelaMonitor(tk.Toplevel):
         self.combo_deletar.pack(pady=5)
         tk.Button(self.aba_deletar, text="🗑️ Deletar Monitor", command=self.btn_deletar_click, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
 
+    def preencher_dados_atuais(self, event=None):
+        selecionado = self.combo_atualizar.get()
+        if not selecionado: return
+        id_mon = int(selecionado.split(" - ")[0])
+        monitores_db = self.sistema.listar_monitores()
+        monitor = next((m for m in monitores_db if m[0] == id_mon), None)
+        if monitor:
+            self.entry_novo_nome.delete(0, tk.END)
+            self.entry_novo_nome.insert(0, monitor[1])
+
     def atualizar_listas(self):
+        sel_atual = self.combo_atualizar.get().split(" - ")[0] if self.combo_atualizar.get() else None
         try:
             monitores_db = self.sistema.listar_monitores()
             lista_formatada = [f"{m[0]} - {m[1]}" for m in monitores_db]
             self.combo_atualizar['values'] = lista_formatada
             self.combo_deletar['values'] = lista_formatada
             if lista_formatada:
-                self.combo_atualizar.current(0)
+                idx_atual = next((i for i, v in enumerate(lista_formatada) if v.startswith(f"{sel_atual} - ")), 0)
+                self.combo_atualizar.current(idx_atual)
                 self.combo_deletar.current(0)
+                self.preencher_dados_atuais()
             else:
                 self.combo_atualizar.set('')
                 self.combo_deletar.set('')
+                self.entry_novo_nome.delete(0, tk.END)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao atualizar listas: {e}", parent=self)
 

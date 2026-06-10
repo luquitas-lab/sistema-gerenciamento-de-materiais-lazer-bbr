@@ -13,11 +13,28 @@ class JanelaHistorico(tk.Toplevel):
         self.grab_set()
 
         colunas = ("ID", "Monitor", "Data", "Ação", "Detalhes")
-        self.tree = ttk.Treeview(self, columns=colunas, show="headings")
+        
+        # Cria um Frame para agrupar a tabela e o Scrollbar ---
+        frame_tabela = tk.Frame(self)
+        frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Adiciona a barra lateral conectada à tabela
+        scrollbar = ttk.Scrollbar(frame_tabela, orient="vertical")
+        scrollbar.pack(side="right", fill="y")
+
+        self.tree = ttk.Treeview(frame_tabela, columns=colunas, show="headings", yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.tree.yview)
+
+        tamanhos_colunas = {"ID": 50, "Monitor": 120, "Data": 140, "Ação": 130, "Detalhes": 240}
+        
         for col in colunas:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=100)
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+            # Aplica o tamanho específico e alinha à esquerda (anchor="w")
+            self.tree.column(col, width=tamanhos_colunas[col], anchor="w")
+            
+        # Empacota a árvore na esquerda do Frame
+        self.tree.pack(side="left", fill="both", expand=True)
+        # -------------------------------------------------------------------
 
         self.carregar_historico()
 

@@ -80,14 +80,23 @@ class JanelaMovimentacoes(tk.Toplevel):
         tk.Button(self.aba_dano, text="⚠️ Confirmar Baixa", command=self.confirmar_dano, bg="red", fg="white", font=("Arial", 10, "bold")).pack(pady=20)
 
     def atualizar_combos_mov(self):
+        # 1. Salva o ID que o usuário estava manipulando antes de atualizar
+        sel_ent = self.combo_mat_ent.get().split(" - ")[0] if self.combo_mat_ent.get() else None
+        sel_dano = self.combo_mat_dano.get().split(" - ")[0] if self.combo_mat_dano.get() else None
+
         try:
             materiais_db = self.sistema.listar_materiais()
             lista_formatada = [f"{m[0]} - {m[1]} (Atual: {m[2]})" for m in materiais_db]
             self.combo_mat_ent['values'] = lista_formatada
             self.combo_mat_dano['values'] = lista_formatada
+            
             if lista_formatada:
-                self.combo_mat_ent.current(0)
-                self.combo_mat_dano.current(0)
+                # 2. Procura a posição do ID antigo na nova lista e restaura o foco
+                idx_ent = next((i for i, v in enumerate(lista_formatada) if v.startswith(f"{sel_ent} - ")), 0)
+                self.combo_mat_ent.current(idx_ent)
+                
+                idx_dano = next((i for i, v in enumerate(lista_formatada) if v.startswith(f"{sel_dano} - ")), 0)
+                self.combo_mat_dano.current(idx_dano)
             else:
                 self.combo_mat_ent.set('')
                 self.combo_mat_dano.set('')
